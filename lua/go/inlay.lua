@@ -8,36 +8,72 @@ local utils = require('go.utils')
 local log = utils.log
 local trace = utils.trace
 local config
+local inlay_display = vim.fn.has('nvim-0.10') == 1
+  and _GO_NVIM_CFG.lsp_inlay_hints.style == 'inlay'
+  and vim.lsp.inlay_hint
+  and type(vim.lsp.inlay_hint) == 'table'
 
+if type(vim.lsp.inlay_hint) == 'function' then
+  utils.warn('unsupported neovim nightly, please upgrade')
+end
+
+-- local inlay_display = true
+-- whether the hints are enabled or not
+local enabled = {}
 -- Update inlay hints when opening a new buffer and when writing a buffer to a
 -- file
 -- opts is a string representation of the table of options
 local should_update = {}
 function M.setup()
-  local events = { 'BufWritePost', 'BufEnter', 'InsertLeave', 'FocusGained', 'CursorHold'}
-  config = _GO_NVIM_CFG.lsp_inlay_hints
-  if config.only_current_line then
+  local events = { 'BufWritePost', 'BufEnter', 'InsertLeave', 'FocusGained', 'CursorHold' }
+
+  config = _GO_NVIM_CFG.lsp_inlay_hints or {}
+  if config.only_current_line then -- only show hints on the current line, deprecated
     local user_events = vim.split(config.only_current_line_autocmd, ',')
     events = vim.tbl_extend('keep', events, user_events)
   end
+
+  api.nvim_create_user_command('GoToggleInlay', function(_)
+    require('go.inlay').toggle_inlay_hints()
+  end, { desc = 'toggle gopls inlay hints' })
 
   local cmd_group = api.nvim_create_augroup('gopls_inlay', {})
   api.nvim_create_autocmd(events, {
     group = cmd_group,
     pattern = { '*.go', '*.mod' },
     callback = function()
-      if not vim.wo.diff then
+      if not vim.wo.diff and enabled[bufnr] then
         require('go.inlay').set_inlay_hints()
       end
     end,
   })
+  if not inlay_display then
+    api.nvim_create_autocmd({ 'BufWritePost' }, {
+      group = cmd_group,
+      pattern = { '*.go', '*.mod' },
+      callback = function()
+        if not vim.wo.diff then
+          local inlay = require('go.inlay')
+          inlay.disable_inlay_hints(true)
+          if enabled[tostring(vim.api.nvim_get_current_buf())] then
+            inlay.set_inlay_hints()
+          end
+        end
+      end,
+    })
+  end
 
-  api.nvim_create_user_command('GoToggleInlay', function(_)
-    require('go.inlay').toggle_inlay_hints()
-  end, { desc = 'toggle gopls inlay hints' })
+  if not config.enable then -- disabled
+    M.disable_inlay_hints(true)
+    return
+  end
+  local bufnr = tostring(vim.api.nvim_get_current_buf())
+  enabled[bufnr] = true
+
+
   vim.defer_fn(function()
     require('go.inlay').set_inlay_hints()
-  end, 1000)
+  end, 100)
 end
 
 local function get_params()
@@ -57,42 +93,8 @@ local function get_params()
 end
 
 local namespace = vim.api.nvim_create_namespace('experimental/inlayHints')
--- whether the hints are enabled or not
-local enabled = nil
 
--- parses the result into a easily parsable format
--- input
--- kind=1: return ; kind = 2: param
--- { {
---     kind = 1,
---     label = { {
---         value = "[]int"
---       } },
---     paddingLeft = true,
---     position = {
---       character = 7,
---       line = 8
---     }
---   }, {
---     kind = 2,
---     label = { {
---         value = "stack:"
---       } },
---     paddingRight = true,
---     position = {
---       character = 29,
---       line = 8
---     }
---   },
-
--- example:
--- {
---  ["12"] = { {
---      kind = "TypeHint",
---      label = "String"
---    } },
--- }
-
+-- parses the result into a easily parsable format see comments EOF
 local function parseHints(result)
   trace(result)
   local map = {}
@@ -103,6 +105,7 @@ local function parseHints(result)
   end
   for _, value in pairs(result) do
     local range = value.position
+    -- range.character = range.character
     local line = value.position.line
     local label = value.label
     local kind = value.kind
@@ -142,68 +145,29 @@ local function get_max_len(bufnr, parsed_data)
   return max_len
 end
 
-
-function nvim10_inline_hints(bufnr, vtext, hint, config)
-  if hint and hint.kind == 1 then
-    vtext = ' ' .. vtext
-  end
-  pcall(function()
-  vim.api.nvim_buf_set_extmark(bufnr, namespace, hint.range.line, hint.range.character, {
-    virt_text_pos = "inline",
-    virt_text = {
-      { vtext, config.highlight },
-    },
-    strict = false,
-    hl_mode = 'combine',
-  })
-  end)
-end
-
-
-local function handler_inline(err, result, ctx)
-  trace(result, ctx)
-
-  if err or result == nil then
-    return
-  end
-  local bufnr = ctx.bufnr
-
-  if vim.api.nvim_get_current_buf() ~= bufnr then
-    return
-  end
-
-  local function unpack_label(label)
-    local labels = ''
-    for _, value in pairs(label) do
-      labels = labels .. ' ' .. value.value
-    end
-
-    return utils.trim(labels)
-  end
-
-  -- clean it up at first
-  M.disable_inlay_hints()
-
-  local parsed = parseHints(result)
-  trace(parsed)
-  -- parsed is a map of line numbers to hints, 
-  -- hint includes label, range, and kind
-  -- I only plan to deal gopls response
-
-  for key, value in pairs(parsed) do
-    trace(key, value)
-    for _, hint in pairs(value) do
-      trace(hint)
-      local label = unpack_label(hint.label)
-      trace(bufnr, namespace, label, hint, config)
-      nvim10_inline_hints(bufnr, label, hint, config)
-    end
-  end
-end
+-- -- inlay hints are supported natively in 0.10 nightly
+-- local function nvim10_inline_hints(bufnr, vtext, hint, cfg)
+--   cfg = cfg or config
+--   if hint and hint.kind == 1 then
+--     vtext = ' ' .. vtext
+--   end
+--   pcall(function()
+--     vim.api.nvim_buf_set_extmark(bufnr, namespace, hint.range.line, hint.range.character, {
+--       virt_text_pos = 'inline',
+--       virt_text = {
+--         { vtext, config.highlight },
+--       },
+--       strict = false,
+--       hl_mode = 'combine',
+--     })
+--   end)
+-- end
 
 local function handler(err, result, ctx)
   trace(result, ctx)
   if err then
+    -- disable inlay hints if there is an error
+    M.disable_inlay_hints()
     return
   end
   local bufnr = ctx.bufnr
@@ -311,23 +275,38 @@ local function handler(err, result, ctx)
       end
 
       -- update state
-      enabled = true
+      enabled[tostring(bufnr)] = true
     end
   end
 end
 
 function M.toggle_inlay_hints()
-  if enabled then
-    M.disable_inlay_hints(true)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local bfnrstr = tostring(bufnr)
+  if inlay_display then
+    vim.lsp.inlay_hint.enable(not enabled[bfnrstr], { bufnr = bufnr })
   else
-    M.set_inlay_hints()
+    -- old version of neovim, will remove when 0.10 is stable
+    if enabled[bfnrstr] then
+      M.disable_inlay_hints(true)
+    else
+      M.set_inlay_hints()
+    end
   end
-  enabled = not enabled
+  enabled[bfnrstr] = not enabled[bfnrstr]
 end
 
-function M.disable_inlay_hints(update)
+function M.disable_inlay_hints(update, bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  if inlay_display then
+    -- disable inlay hints
+    vim.lsp.inlay_hint.enable(false, { bufnr = bufnr })
+    enabled[tostring(bufnr)] = false
+    return
+  end
   -- clear namespace which clears the virtual text as well
   vim.api.nvim_buf_clear_namespace(0, namespace, 0, -1)
+  enabled[tostring(bufnr)] = false
 
   if update then
     local fname = fn.expand('%:p')
@@ -335,41 +314,39 @@ function M.disable_inlay_hints(update)
   end
 end
 
-local found = false
 -- Sends the request to gopls to get the inlay hints and handle them
 function M.set_inlay_hints()
-  local bufnr = vim.api.nvim_get_current_buf()
-  -- check if lsp is ready
-  if not found then
-    for _, lsp in pairs(vim.lsp.get_active_clients({ bufnr = bufnr })) do
-      if lsp.name == 'gopls' then
-        found = true
-        break
-      end
-    end
-  end
-  if not found then
+  if vim.wo.diff then
     return
   end
-  if vim.wo.diff then
+  local bufnr = vim.api.nvim_get_current_buf()
+  -- check if lsp is ready
+  if not require('go.lsp').client() then
     return
   end
   local fname = fn.expand('%:p')
   local filetime = fn.getftime(fname)
+  if inlay_display then
+    local wrap = utils.throttle(function()
+      vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+      should_update[fname] = filetime
+    end, 300)
+    return wrap()
+  end
+  trace('old style inlay')
+  local fname = fn.expand('%:p')
+  local filetime = fn.getftime(fname)
   if should_update[fname] == filetime then
+    trace('already updated')
     return
   end
-
   local h = handler
-  local nvim10 = vim.fn.has('nvim-0.10') == 1
-  if nvim10 then
-    h = handler_inline
-  end
-  vim.defer_fn(function()
+  local wrap = utils.throttle(function()
+    trace('inlay hints buf req', bufnr)
     vim.lsp.buf_request(bufnr, 'textDocument/inlayHint', get_params(), h)
     should_update[fname] = filetime
-  end, 100)
-
+  end, 300)
+  wrap()
 end
 
 return M
@@ -396,4 +373,78 @@ return M
     line = 78
   }
 }
-]]--
+]]
+--
+
+-- input
+-- kind=1: return ; kind = 2: param
+-- { {
+--     kind = 1,
+--     label = { {
+--         value = "[]int"
+--       } },
+--     paddingLeft = true,
+--     position = {
+--       character = 7,
+--       line = 8
+--     }
+--   }, {
+--     kind = 2,
+--     label = { {
+--         value = "stack:"
+--       } },
+--     paddingRight = true,
+--     position = {
+--       character = 29,
+--       line = 8
+--     }
+--   },
+
+-- example:
+-- {
+--  ["12"] = { {
+--      kind = "TypeHint",
+--      label = "String"
+--    } },
+-- }
+
+-- local function handler_inline(err, result, ctx)
+--   trace(result, ctx)
+--
+--   if err or result == nil then
+--     return
+--   end
+--   local bufnr = ctx.bufnr
+--
+--   if vim.api.nvim_get_current_buf() ~= bufnr then
+--     return
+--   end
+--
+--   local function unpack_label(label)
+--     local labels = ''
+--     for _, value in pairs(label) do
+--       labels = labels .. ' ' .. value.value
+--     end
+--
+--     return utils.trim(labels)
+--   end
+--
+--   -- clean it up at first
+--   M.disable_inlay_hints()
+--
+--   local parsed = parseHints(result)
+--   trace(parsed)
+--   -- parsed is a map of line numbers to hints,
+--   -- hint includes label, range, and kind
+--   -- I only plan to deal gopls response
+--
+--   for key, value in pairs(parsed) do
+--     trace(key, value)
+--     for _, hint in pairs(value) do
+--       trace(hint)
+--       local label = unpack_label(hint.label)
+--       trace(bufnr, namespace, label, hint, config)
+--       nvim10_inline_hints(bufnr, label, hint, config)
+--     end
+--   end
+-- end

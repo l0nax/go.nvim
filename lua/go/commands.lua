@@ -136,7 +136,11 @@ return {
     end, { nargs = '*' })
 
     create_cmd('GoImport', function(opts)
-      require('go.format').goimport(unpack(opts.fargs))
+      vim.notify('GoImport is deprecated, use GoImports')
+      require('go.format').goimports(unpack(opts.fargs))
+    end, {})
+    create_cmd('GoImports', function(opts)
+      require('go.format').goimports(unpack(opts.fargs))
     end, {
       complete = function(a, l)
         return package.loaded.go.doc_complete(a, l)
@@ -166,11 +170,22 @@ return {
       gobin
     )
     vim.cmd(cmd)
+    local pcmdstr = ''
+    local preludes = _GO_NVIM_CFG.preludes
+    local gorun_preludes = preludes.GoRun or preludes.default
+    if gorun_preludes ~= nil then
+      local pcmd = gorun_preludes()
+      if #pcmd > 0 then
+        pcmdstr = table.concat(pcmd, '\\ ') .. '\\ '
+      end
+    end
 
     cmd = string.format(
-      [[command! -nargs=* -complete=customlist,v:lua.package.loaded.go.package_complete GoRun   :setl makeprg=%s\ run | lua require'go.asyncmake'.make(<f-args>)]],
+      [[command! -nargs=* -complete=customlist,v:lua.package.loaded.go.package_complete GoRun   :setl makeprg=%s%s\ run | lua require'go.asyncmake'.make(<f-args>)]],
+      pcmdstr,
       gobin
     )
+    utils.log(cmd)
     vim.cmd(cmd)
 
     create_cmd('GoStop', function(opts)
@@ -221,11 +236,8 @@ return {
       nargs = '*',
     })
 
-    -- vim.cmd([[command! GoTestCompile  :setl makeprg=go\ build | :GoMake]])
-    --print-issued-lines=false
-
     vim.cmd(
-      [[command! GoLint         :setl makeprg=golangci-lint\ run\ --print-issued-lines=false\ --exclude-use-default=false | :GoMake]]
+      [[command! GoLint         :setl makeprg=golangci-lint\ run\ --print-issued-lines=false\ --exclude-use-default=false\ --out-format=line-number | :GoMake]]
     )
 
     create_cmd('GoProject', function(opts)
@@ -273,6 +285,23 @@ return {
     create_cmd('GoModVendor', function(opts)
       require('go.mod').run('vendor', unpack(opts.fargs))
     end, { nargs = '*' })
+    create_cmd('GoModDnld', function(opts)
+      require('go.mod').run('download', unpack(opts.fargs))
+    end, { nargs = '*' })
+
+    create_cmd('GoModGraph', function(opts)
+      require('go.mod').run('graph', unpack(opts.fargs))
+    end, { nargs = '*' })
+    create_cmd('GoModWhy', function(opts)
+      if #opts.fargs == 0 then
+        local m = require('go.mod').get_mod()
+        if m then
+          require('go.mod').run('why', m)
+          return
+        end
+      end
+      require('go.mod').run('why', unpack(opts.fargs))
+    end, { nargs = '*' })
     create_cmd('GoModInit', function(opts)
       require('go.mod').run('init', unpack(opts.fargs))
     end, { nargs = '*' })
@@ -284,11 +313,7 @@ return {
       require('go.codelens').run_action()
     end)
     create_cmd('GoCodeAction', function(t)
-      if t.range ~= 0 then
-        require('go.codeaction').run_range_code_action({ t.line1, t.line2 })
-      else
-        require('go.codeaction').run_code_action()
-      end
+      require('go.codeaction').run_code_action(t)
     end, { range = true })
 
     create_cmd('GoModifyTag', function(opts)
@@ -318,6 +343,10 @@ return {
       end,
       nargs = '*',
     })
+
+    create_cmd('GoImplements', function(opts)
+      vim.lsp.buf.implementation()
+    end, {})
 
     create_cmd('GoDoc', function(opts)
       require('go.godoc').run(opts.fargs)
@@ -385,6 +414,14 @@ return {
       require('go.alternate').switch(opts.bang, 'split')
     end, { bang = true })
 
+    create_cmd('GoWork', function(opts)
+      require('go.work').update(unpack(opts.fargs))
+    end, {
+      nargs = '*',
+      complete = function(_, _, _)
+        return { 'run', 'use' }
+      end,
+    })
     create_cmd('GoModTidy', function(_)
       require('go.gopls').tidy()
     end)
@@ -401,13 +438,6 @@ return {
         height = #lines,
       }
       vim.lsp.util.open_floating_preview(lines, 'go', config)
-    end)
-
-    create_cmd('GoCallstack', function(_)
-      require('go.guru').callstack(-1)
-    end)
-    create_cmd('GoChannel', function(_)
-      require('go.guru').channel_peers(-1)
     end)
 
     if _GO_NVIM_CFG.dap_debug then
@@ -460,14 +490,20 @@ return {
     end, { nargs = '*' })
     create_cmd('GoNew', function(opts)
       require('go.template.gonew').new(opts.fargs)
-    end, { nargs = '*' })
+    end, {
+      nargs = '*',
+      complete = function(_, _, _)
+        -- return completion candidates as a list-like table
+        return require('go.template.gonew').complete
+      end,
+    })
     create_cmd('Ginkgo', function(opts)
       require('go.ginkgo').run(opts.fargs)
     end, {
       nargs = '*',
       complete = function(_, _, _)
         -- return completion candidates as a list-like table
-        return { 'generate', 'bootstrap', 'build', 'labels', 'run', 'watch'}
+        return { 'generate', 'bootstrap', 'build', 'labels', 'run', 'watch' }
       end,
     })
     create_cmd('GinkgoFunc', function(opts)

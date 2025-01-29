@@ -1,7 +1,12 @@
+-- NOTE: this setup should work for both Mac and Linux
+-- change the slash to backslash in PATH for Windows
 vim.cmd([[set runtimepath=$VIMRUNTIME]])
-vim.cmd([[set packpath=/tmp/nvim/lazy]])
+local tmpdir = vim.loop.os_tmpdir() .. '/nvim'
+packpath = tmpdir .. '/lazy'
+vim.cmd([[set packpath=]] .. packpath)
+-- print(packpath)
 
-local package_root = '/tmp/nvim/lazy'
+local package_root = packpath
 local plugin_folder = function()
   local host = os.getenv('HOST_NAME')
   if host and (host:find('Ray') or host:find('ray')) then
@@ -40,27 +45,23 @@ local function load_plugins()
       'ray-x/go.nvim',
       dev = (plugin_folder() ~= ''),
       -- dev = true,
-      ft = 'go',
+      ft = { 'go', 'gomod', 'gosum', 'gotmpl', 'gohtmltmpl', 'gotexttmpl' },
       dependencies = {
         'mfussenegger/nvim-dap', -- Debug Adapter Protocol
         'rcarriga/nvim-dap-ui',
+        'nvim-neotest/nvim-nio',
         'theHamsta/nvim-dap-virtual-text',
         'ray-x/guihua.lua',
       },
-      config = function()
-        require('go').setup({
-          verbose = true,
-          lsp_cfg = {
-            handlers = {
-              ['textDocument/hover'] = vim.lsp.with(vim.lsp.handlers.hover, { border = 'double' }),
-              ['textDocument/signatureHelp'] = vim.lsp.with(
-                vim.lsp.handlers.signature_help,
-                { border = 'round' }
-              ),
-            },
-          }, -- false: do nothing
-        })
-      end,
+      config = true,
+      opts = {
+        verbose = true,
+        -- log_path = '~/tmp/go.log',
+        lsp_cfg = true,
+        goimports = 'gopls',
+        gofmt = 'gopls',
+        max_line_len = 80,
+      },
     },
   }
 end
@@ -75,5 +76,3 @@ local opts = {
 }
 
 require('lazy').setup(load_plugins(), opts)
-
-vim.cmd('colorscheme murphy')

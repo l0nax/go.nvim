@@ -1,4 +1,4 @@
-package main
+package coverage
 
 import "testing"
 
@@ -20,12 +20,12 @@ func Test_branch(t *testing.T) {
 			want: 10,
 		},
 		{
-			name: "b10",
+			name: "b10 [step 1..3]",
 			args: args{b: 10},
 			want: 20,
 		},
 		{
-			name: "b10",
+			name: "b10 [step 1..3]",
 			args: args{},
 			want: 0,
 		},
@@ -69,4 +69,18 @@ func TestBranch(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBranchSubTest(t *testing.T) {
+	t.Run("a11", func(t *testing.T) {
+		if got := branch(10, 0); got != 10 {
+			t.Errorf("branch() = %v, want %v", got, 10)
+		}
+	})
+
+	t.Run("b11", func(t *testing.T) {
+		if got := branch(10, 0); got != 10 {
+			t.Errorf("branch() = %v, want %v", got, 10)
+		}
+	})
 }

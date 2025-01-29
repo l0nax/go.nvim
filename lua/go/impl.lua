@@ -16,10 +16,9 @@ local function get_type_name()
   local node_name = name.name
   -- let move the cursor to end of line of struct name
   local dim = name.dim.e
-  -- let move cursor
   local r, c = dim.r, dim.c
   utils.log('move cusror to ', r, c)
-  vim.api.nvim_win_set_cursor(0, { r, c })
+  vim.api.nvim_win_set_cursor(0, { r, c - 1 })
   return node_name, name.type
 end
 
@@ -33,10 +32,9 @@ local function get_interface_name()
   local node_name = name.name
   -- let move the cursor to end of line of struct name
   local dim = name.dim.e
-  -- let move cursor
   local r, c = dim.r, dim.c
   utils.log('move cusror to ', r, c)
-  vim.api.nvim_win_set_cursor(0, { r, c })
+  vim.api.nvim_win_set_cursor(0, { r, c - 1 })
 
   local pkg = require('go.package').pkg_from_path(nil, vim.api.nvim_get_current_buf())
   log(pkg[1])
@@ -110,6 +108,7 @@ local run = function(...)
   -- vim.cmd("normal! $%") -- do a bracket match. changed to treesitter
   local opts = {
     update_buffer = true,
+    loclist = false,
     on_exit = function(code, signal, data)
       if code ~= 0 or signal ~= 0 then
         utils.warn('impl failed' .. vim.inspect(data))
@@ -118,11 +117,13 @@ local run = function(...)
       data = vim.split(data, '\n')
       data = utils.handle_job_data(data)
       if not data then
+        utils.warn('impl failed' .. vim.inspect(data))
         return
       end
       vim.schedule(function()
         local lnum = vfn.getcurpos()[2]
         table.insert(data, 1, '')
+        vfn.setpos('.', { 0, lnum, 1, 0 })
         vfn.append(lnum, data)
         vim.cmd('w')
       end)

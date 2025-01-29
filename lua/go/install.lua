@@ -14,19 +14,18 @@ local url = {
   gotests = 'github.com/cweill/gotests/...',
   iferr = 'github.com/koron/iferr',
   callgraph = 'golang.org/x/tools/cmd/callgraph',
-  guru = 'golang.org/x/tools/cmd/guru',
   impl = 'github.com/josharian/impl',
-  fillstruct = 'github.com/davidrjenni/reftools/cmd/fillstruct',
   fillswitch = 'github.com/davidrjenni/reftools/cmd/fillswitch',
   dlv = 'github.com/go-delve/delve/cmd/dlv',
   ginkgo = 'github.com/onsi/ginkgo/v2/ginkgo',
   richgo = 'github.com/kyoh86/richgo',
   gotestsum = 'gotest.tools/gotestsum',
-  mockgen = 'github.com/golang/mock/mockgen',
+  mockgen = 'go.uber.org/mock/mockgen',
   ['json-to-struct'] = 'github.com/tmc/json-to-struct',
   gomvp = 'github.com/abenz1267/gomvp',
   govulncheck = 'golang.org/x/vuln/cmd/govulncheck',
   ['go-enum'] = 'github.com/abice/go-enum',
+  gonew = 'golang.org/x/tools/cmd/gonew',
 }
 
 local tools = {}
@@ -42,10 +41,9 @@ local function is_installed(bin)
   local sep = utils.sep2()
   local ext = utils.ext()
 
-
   if utils.goenv_mode() then
     local cwd = vim.fn.getcwd()
-    local cmd = "cd " .. cwd .. " && goenv which " .. bin .. " 2>&1"
+    local cmd = 'cd ' .. cwd .. ' && goenv which ' .. bin .. ' 2>&1'
 
     local status = os.execute(cmd)
 
@@ -62,7 +60,7 @@ local function is_installed(bin)
   end
 
   local env_path = os.getenv('PATH')
-  local base_paths = vim.split(env_path, sep, true)
+  local base_paths = vim.split(env_path, sep, { trimempty = true })
 
   for _, value in pairs(base_paths) do
     if uv.fs_stat(value .. DIR_SEP .. bin .. ext) then
@@ -92,10 +90,14 @@ local function go_install_sync(pkg)
   if vim.v.shell_error ~= 0 then
     vim.notify('install ' .. pkg .. ' failed: ' .. output, vim.log.levels.ERROR)
   else
-    vim.notify('install ' .. pkg .. ' success', vim.log.levels.INFO)
+    vim.notify(
+      'install ' .. pkg .. ' installed to ' .. (vim.env['GOBIN'] or vim.fn.system('go env GOBIN')),
+      vim.log.levels.INFO
+    )
   end
 end
 
+-- async install pkg
 local function go_install(pkg)
   local u = url[pkg]
   if u == nil then
@@ -133,12 +135,8 @@ local function install(bin, verbose)
     verbose = _GO_NVIM_CFG.verbose
   end
   if not is_installed(bin) then
-    vim.notify('installing ' .. bin, vim.log.levels.INFO)
     go_install(bin)
-  else
-    if verbose then
-      vim.notify(bin .. ' installed, use GoUpdateBinary to update it', vim.log.levels.DEBUG)
-    end
+    vim.notify('installing ' .. bin, vim.log.levels.INFO)
   end
   return is_installed(bin)
 end

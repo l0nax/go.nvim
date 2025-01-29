@@ -9,15 +9,16 @@ local pkgs = {}
 local complete = function(sep)
   log('complete', sep)
   sep = sep or '\n'
-  local ok, l = golist(false, { util.all_pkgs() })
+  local ok, l = golist { util.all_pkgs() }
   if not ok then
     log('Failed to find all packages for current module/project.')
+    return
   end
   log(l)
   local curpkgmatch = false
   local curpkg = vfn.fnamemodify(vfn.expand('%'), ':h:.')
   local pf = function()
-    for _, p in ipairs(l) do
+    for _, p in ipairs(l or {}) do
       local d = vfn.fnamemodify(p.Dir, ':.')
       if curpkg ~= d then
         if d ~= vfn.getcwd() then
@@ -46,7 +47,7 @@ local complete = function(sep)
 end
 
 local all_pkgs = function()
-  local ok, l = golist(false, { util.all_pkgs() })
+  local ok, l = golist { util.all_pkgs() }
   if not ok then
     log('Failed to find all packages for current module/project.')
   end

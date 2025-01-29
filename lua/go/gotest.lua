@@ -17,6 +17,7 @@ local long_opts = {
   count = 'n',
   tags = 't',
   fuzz = 'f',
+  run = 'r',
   bench = 'b',
   metric = 'm',
   select = 's',
@@ -26,12 +27,12 @@ local long_opts = {
 }
 
 local sep = require('go.utils').sep()
-local short_opts = 'a:cC:t:bsFmpn:v'
+local short_opts = 'a:cC:b:fFmn:pst:r:v'
 local bench_opts = { '-benchmem', '-cpuprofile', 'profile.out' }
 
-local os_name = vim.loop.os_uname().sysname
-local is_windows = os_name == 'Windows' or os_name == 'Windows_NT'
-local is_git_shell = is_windows and (vim.fn.exists('$SHELL') and vim.fn.expand('$SHELL'):find('bash.exe') ~= nil)
+local is_windows = utils.is_windows()
+local is_git_shell = is_windows
+  and (vim.fn.exists('$SHELL') and vim.fn.expand('$SHELL'):find('bash.exe') ~= nil)
 M.efm = function()
   local indent = [[%\\%(    %\\)]]
   local efm = [[%-G=== RUN   %.%#]]
@@ -66,17 +67,13 @@ M.efm = function()
   return efm
 end
 local parse = vim.treesitter.query.parse
-if parse == nil then
-  parse = vim.treesitter.query.parse_query
-end
 
 -- return "-tags=tag1,tag2"
 M.get_build_tags = function(args, tbl)
-  -- local tags = "-tags"
   args = args or {}
   local tags = {}
   if _GO_NVIM_CFG.build_tags ~= '' then
-    tags = { _GO_NVIM_CFG.build_tags }
+    table.insert(tags, _GO_NVIM_CFG.build_tags)
   end
 
   local optarg, _, reminder = getopt.get_opts(args, short_opts, long_opts)
@@ -90,13 +87,16 @@ M.get_build_tags = function(args, tbl)
     vim.list_extend(tags, rt)
   end
 
+  local t = '-tags'
+  if _GO_NVIM_CFG.test_runner == 'dlv' then
+    t = '--build-flags'
+  end
   if #tags > 0 then
     if tbl then
-      return { '-tags', table.concat(tags, ',') }, reminder, optarg
+      return { t, table.concat(tags, ',') }, reminder, optarg
     end
-    return '-tags=' .. table.concat(tags, ','), reminder, optarg
+    return t .. '=' .. table.concat(tags, ','), reminder, optarg
   end
-  return
 end
 
 function M.get_test_path()
@@ -108,13 +108,6 @@ function M.get_test_path()
   return '.' .. sep .. relative_path
 end
 
-local function richgo(cmd)
-  if cmd[1] == 'go' and vfn.executable('richgo') == 1 then
-    cmd[1] = 'richgo'
-  end
-  return cmd
-end
-
 local function get_test_filebufnr()
   local fn = vfn.expand('%')
   trace(fn)
@@ -123,13 +116,14 @@ local function get_test_filebufnr()
   if not fn:find('test%.go$') then
     fn = require('go.alternate').alternate()
     fn = vfn.fnamemodify(fn, ':p') -- expand to full path
+    -- check if file exists
+    if vfn.filereadable(fn) == 0 then
+      vim.notify('no test file found for ' .. fn, vim.log.levels.WARN)
+      return 0, 'no test file'
+    end
     local uri = vim.uri_from_fname(fn)
     bufnr = vim.uri_to_bufnr(uri)
     log(fn, bufnr, uri)
-    if vfn.filereadable(vim.uri_to_fname(uri)) == 0 then
-      -- no test file existed
-      return 0, 'no test file'
-    end
     if not vim.api.nvim_buf_is_loaded(bufnr) then
       vfn.bufload(bufnr)
     end
@@ -137,20 +131,24 @@ local function get_test_filebufnr()
   return bufnr
 end
 
--- {-c: compile, -v: verbose, -t: tags, -b: bench, -s: select}
-local function run_test(path, args)
-  log(args)
+local function cmd_builder(path, args)
+  log('builder args', args)
   local compile = false
   local bench = false
   local extra_args = ''
+  for i, arg in ipairs(args) do
+    --check if it is bench test
+    if arg:find('-bench') then
+      bench = true
+      table.remove(args, i)
+      break
+    end
+  end
   local optarg, oid, reminder = getopt.get_opts(args, short_opts, long_opts)
-  trace(optarg, oid, reminder)
+  trace('cmd_builder', optarg, oid, reminder)
   if optarg['c'] then
     path = utils.rel_path(true) -- vfn.expand("%:p:h") can not resolve releative path
     compile = true
-  end
-  if optarg['b'] then
-    bench = true
   end
 
   if reminder and #reminder > 0 then
@@ -162,11 +160,6 @@ local function run_test(path, args)
     end
   end
 
-
-  if optarg['a'] then
-    extra_args = optarg['a']
-  end
-
   if next(reminder) then
     path = reminder[1]
     table.remove(reminder, 1)
@@ -175,49 +168,57 @@ local function run_test(path, args)
   if _GO_NVIM_CFG.test_runner ~= test_runner then
     test_runner = _GO_NVIM_CFG.test_runner
     if not install(test_runner) then
+      vim.notify('test runner not found', vim.log.levels.INFO)
       test_runner = 'go'
     end
   end
 
   local tags = M.get_build_tags(args)
 
-  log(tags)
-  local cmd = {}
+  log('tags', tags)
+  local cmd = { 'go', 'test' }
 
   local run_in_floaterm = optarg['F'] or _GO_NVIM_CFG.run_in_floaterm
   if run_in_floaterm then
-    table.insert(cmd, test_runner or 'go')
-    table.insert(cmd, 'test')
+    cmd[1] = test_runner or 'go'
   end
 
   if not empty(tags) then
     cmd = vim.list_extend(cmd, { tags })
   end
 
-  if optarg['C'] then
-    if run_in_floaterm then
-      table.insert(cmd, '-coverprofile=' .. optarg['C'])
-    else
-      table.insert(cmd, '-C')
-      table.insert(cmd, optarg['C'])
-    end
+  if optarg['c'] then
+    compile = true
   end
-
   if optarg['n'] then
-    if run_in_floaterm then
-      table.insert(cmd, '-count=' .. optarg['n'])
-    else
-      table.insert(cmd, '-n')
-      table.insert(cmd, optarg['n'])
-    end
+    table.insert(cmd, '-count=' .. optarg['n'])
   end
 
   if (optarg['v'] or _GO_NVIM_CFG.verbose_tests) and _GO_NVIM_CFG.test_runner == 'go' then
     table.insert(cmd, '-v')
   end
-  if not empty(reminder) then
-    cmd = vim.list_extend(cmd, reminder)
-    log('****', reminder, cmd)
+
+  if optarg['f'] then
+    log('fuzz test')
+    table.insert(cmd, '-fuzz')
+  end
+
+  if optarg['P'] then
+    table.insert(cmd, '-parallel')
+    table.insert(cmd, optarg['P'])
+  end
+
+  log('optargs', optarg)
+  if optarg['r'] then
+    log('run test', optarg['r'])
+    table.insert(cmd, '-test.run')
+    table.insert(cmd, optarg['r'])
+  end
+
+  if optarg['b'] and optarg['b'] ~= '' then
+    log('build test flags', optarg['b'])
+    assert(type(optarg['b']) == 'string', 'build flags must be string')
+    table.insert(cmd, optarg['b'])
   end
 
   if compile == true then
@@ -241,24 +242,38 @@ local function run_test(path, args)
     end
   end
 
-  if #extra_args > 0 then
-    table.insert(cmd, '-a')
-    table.insert(cmd, extra_args)
+  if optarg['C'] then
+    table.insert(cmd, '-coverprofile=' .. optarg['C'])
   end
-  utils.log(cmd, args)
+
+  if not empty(reminder) then
+    cmd = vim.list_extend(cmd, reminder)
+    log('****', reminder, cmd)
+  end
+  if optarg['a'] then
+    table.insert(cmd, '-args')
+    table.insert(cmd, optarg['a'])
+  end
+  log(cmd, optarg, tags)
+  return cmd, optarg, tags
+end
+
+-- {-c: compile, -v: verbose, -t: tags, -b: bench, -s: select}
+local function run_test(path, args)
+  log('run test', args)
+  local cmd, optarg = cmd_builder(path, args)
+  log(cmd, args)
+  local run_in_floaterm = _GO_NVIM_CFG.run_in_floaterm or optarg['F']
   if run_in_floaterm then
-    install('richgo')
     local term = require('go.term').run
-    cmd = richgo(cmd)
     log(cmd)
     term({ cmd = cmd, autoclose = false })
     return cmd
   end
 
-  vim.cmd([[setl makeprg=]] .. _GO_NVIM_CFG.go .. [[\ test]])
-
   utils.log('test cmd', cmd)
-  return require('go.asyncmake').make(unpack(cmd))
+  local asyncmake = require('go.asyncmake')
+  return asyncmake.runjob(cmd, 'go test', args)
 end
 
 M.test = function(...)
@@ -279,8 +294,23 @@ M.test = function(...)
     package = 'p',
   }
 
+  local parallel = 0
+  for i, arg in ipairs(args) do
+    --check if it is bench test
+    if arg:find('-parallel') then
+      parallel = args[i + 1]:match('%d+')
+      table.remove(args, i)
+      table.remove(args, i)
+      break
+    end
+  end
   local test_short_opts = 'a:vcC:t:bsfmnpF'
   local optarg, _, reminder = getopt.get_opts(args, test_short_opts, test_opts)
+  if parallel ~= 0 then
+    optarg['P'] = parallel
+    table.insert(args, '-P')
+    table.insert(args, parallel)
+  end
 
   -- if % in reminder expand to current file
   for i, v in ipairs(reminder) do
@@ -319,7 +349,11 @@ M.test = function(...)
   local fpath = workfolder .. utils.sep() .. '...'
 
   if #reminder > 0 then
-    fpath = reminder[1]
+    -- check if reminder is a directory
+    local r = reminder[1]
+    if string.find(r, '%.%.%.') or vim.fn.isdirectory(r) == 1 then
+      fpath = reminder[1]
+    end
   end
 
   utils.log('fpath :' .. fpath)
@@ -341,7 +375,7 @@ end
 
 M.test_package = function(...)
   local args = { ... }
-  log(args)
+  log('test pkg', args)
   local fpath = M.get_test_path() .. sep .. '...'
   utils.log('fpath: ' .. fpath)
   return run_test(fpath, args)
@@ -372,24 +406,28 @@ M.get_test_func_name = function()
 end
 
 M.get_testcase_name = function()
-  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-  row, col = row, col + 1
-  local ns = require('go.ts.go').get_testcase_node()
-  if empty(ns) then
-    return nil
+  local tc_name = require('go.ts.go').get_tbl_testcase_node_name()
+  if not empty(tc_name) then
+    return tc_name
   end
-  if ns == nil or ns.name == nil then
-    return nil
+  tc_name = require('go.ts.go').get_sub_testcase_name()
+  if not empty(tc_name) then
+    return tc_name
   end
-  return ns
+  return nil
+end
+
+local function format_test_name(name)
+  name = name:gsub('"', '')
+  if not _GO_NVIM_CFG.gotest_case_exact_match then
+    return name
+  end
+  return string.format([['^\Q%s\E$']], name)
 end
 
 local function run_tests_with_ts_node(args, func_node, tblcase_ns)
-  local optarg, _, reminder = getopt.get_opts(args, short_opts, long_opts)
-  local tags = M.get_build_tags(args)
-  utils.log('args: ', args)
-  utils.log('tags: ', tags)
-  utils.log('parnode' .. vim.inspect(func_node))
+  local fpath = M.get_test_path()
+  local cmd, optarg, tags = cmd_builder(fpath, args)
 
   local test_runner = _GO_NVIM_CFG.test_runner or 'go'
 
@@ -397,142 +435,87 @@ local function run_tests_with_ts_node(args, func_node, tblcase_ns)
     if not install(test_runner) then
       test_runner = 'go'
     end
-    if test_runner == 'ginkgo' then
-      ginkgo.test_func(args)
-    end
   end
 
-  local run_flags = '-r'
-
-  local cmd = {}
-  local run_in_floaterm = optarg['F'] or _GO_NVIM_CFG.run_in_floaterm
-  if run_in_floaterm then
-    table.insert(cmd, test_runner)
-    table.insert(cmd, 'test')
-    run_flags = '-run'
+  if test_runner == 'ginkgo' or ginkgo.is_ginkgo_file() then
+    return ginkgo.test_func(args)
   end
 
   if optarg['s'] then
-    return M.select_tests()
-  end
-  if (optarg['v'] or _GO_NVIM_CFG.verbose_tests) and _GO_NVIM_CFG.test_runner == 'go' then
-    table.insert(cmd, '-v')
-  end
-
-  if tags and tags ~= '' then
-    table.insert(cmd, tags)
+    return M.select_tests(args)
   end
   if func_node == nil or func_node.name == nil then
     return
   end
 
-  if optarg['n'] then
-    if run_in_floaterm then
-      table.insert(cmd, '-count')
-      table.insert(cmd, (optarg['n'] or '1'))
-    else
-      table.insert(cmd, '-n')
-      table.insert(cmd, (optarg['n'] or '1'))
-    end
-  end
+  local test_name_path = format_test_name(func_node.name)
 
-  if optarg['C'] then
-    if run_in_floaterm then
-      table.insert(cmd, '-count')
-      table.insert(cmd, optarg['C'])
-    else
-      table.insert(cmd, '-C')
-      table.insert(cmd, optarg['C'])
-    end
-  end
-  local tbl_name = ''
-  if tblcase_ns and tblcase_ns.name then
-    tbl_name = tblcase_ns.name:gsub('/', '//')
-    tbl_name = tbl_name:gsub('%(', '\\(')
-    tbl_name = tbl_name:gsub('%)', '\\)')
-    tbl_name = '/' .. tbl_name
+  log(test_name_path, tblcase_ns)
+  if tblcase_ns then
+    test_name_path = test_name_path .. '/' .. format_test_name(tblcase_ns)
   end
 
   if func_node.name:find('Bench') then
-    if run_in_floaterm then
-      local bench = '-bench=' .. func_node.name .. tbl_name
-      table.insert(cmd, bench)
-    else
-      table.insert(cmd, '-b')
-      table.insert(cmd, func_node.name)
+    local bench = '-bench=' .. test_name_path
+    for i, v in ipairs(cmd) do
+      if v:find('-bench') then
+        cmd[i] = bench
+        break
+      end
+      if i == #cmd then
+        table.insert(cmd, bench)
+      end
     end
     vim.list_extend(cmd, bench_opts)
   elseif func_node.name:find('Fuzz') then
-    if run_in_floaterm then
-      table.insert(cmd, '-fuzz=func_node.name')
-    else
-      table.insert(cmd, '-f')
-      table.insert(cmd, func_node.name)
-    end
+    table.insert(cmd, '-test.fuzz=' .. func_node.name)
   else
-    table.insert(cmd, run_flags)
-    if is_windows then
-      table.insert(cmd, [[^]] .. func_node.name .. [[$]] .. tbl_name)
-    else
-      table.insert(cmd, [['^]] .. func_node.name .. [[$']] .. tbl_name)
-    end
-  end
-
-  local fpath = M.get_test_path()
-  table.insert(cmd, fpath)
-
-  if optarg['a'] then
-    table.insert(cmd, '-a')
-    table.insert(cmd, optarg['a'])
+    table.insert(cmd, '-test.run=' .. test_name_path)
   end
 
   if test_runner == 'dlv' then
-    local runflag = string.format("-test.run='^%s$'%s", func_node.name, tbl_name)
-    if tags and #tags > 0 then
-      cmd = { 'dlv', 'test', fpath, '--build-flags', tags, '--', runflag }
-    else
-      cmd = { 'dlv', 'test', fpath, '--', runflag }
-    end
+    local runflag = string.format('-test.run=%s', test_name_path)
+    table.insert(cmd, 3, fpath)
+    table.insert(cmd, '--')
+    table.insert(cmd, runflag)
     log(cmd)
     local term = require('go.term').run
     term({ cmd = cmd, autoclose = false })
     return
   end
+  local run_in_floaterm = optarg['F'] or _GO_NVIM_CFG.run_in_floaterm
 
   if run_in_floaterm then
     utils.log(cmd)
-    install('richgo')
     local term = require('go.term').run
-    cmd = richgo(cmd)
     term({ cmd = cmd, autoclose = false })
     return
   end
-  vim.list_extend(cmd, reminder)
 
-  vim.cmd([[setl makeprg=]] .. test_runner .. [[\ test]])
   -- set_efm()
   utils.log('test cmd', cmd)
 
-  return require('go.asyncmake').make(unpack(cmd))
+  return require('go.asyncmake').runjob(cmd, 'go test', args)
 end
 
 --options {s:select, F: floaterm}
 M.test_func = function(...)
   local args = { ... } or {}
   log(args)
-
-  local ns = M.get_test_func_name()
-  if empty(ns) then
-    return M.select_tests()
-  end
-
-  local parser_path = vim.api.nvim_get_runtime_file('parser' .. sep .. 'go.so', false)[1]
-  if not parser_path then
+  local bufnr = get_test_filebufnr()
+  local p = vim.treesitter.get_parser(bufnr, 'go')
+  if not p then
     --   require('nvim-treesitter.install').commands.TSInstallSync['run!']('go')
     vim.notify(
-      'go treesitter parser not found, please Run `:TSInstallSync go`',
+      'go treesitter parser not found for file '
+        .. vim.fn.bufname()
+        .. ' please Run `:TSInstallSync go` ',
       vim.log.levels.WARN
     )
+  end
+  local ns = M.get_test_func_name()
+  if empty(ns) then
+    return M.select_tests(args)
   end
   return run_tests_with_ts_node(args, ns)
 end
@@ -540,7 +523,6 @@ end
 --options {s:select, F: floaterm}
 M.test_tblcase = function(...)
   local args = { ... }
-  log(args)
 
   local ns = M.get_test_func_name()
   if empty(ns) then
@@ -561,32 +543,37 @@ M.get_test_cases = function()
     fpath = '.' .. sep .. vfn.fnamemodify(vfn.expand('%:p'), ':.:r') .. '_test.go'
   end
   -- utils.log(args)
+  -- check if test file exists
+  if vfn.filereadable(fpath) == 0 then
+    return
+  end
   local tests = M.get_testfunc()
-  if not tests then
+  if vim.fn.empty(tests) == 1 then
+    -- TODO maybe with treesitter or lsp list all functions in current file and regex with Test
+    if vfn.executable('sed') == 0 then
+      vim.notify('sed not found', vim.log.levels.WARN)
+      return
+    end
     local cmd = [[cat ]]
       .. fpath
       .. [[| sed -n 's/func\s\+\(Test.*\)(.*/\1/p' | xargs | sed 's/ /\\|/g']]
-    -- TODO maybe with treesitter or lsp list all functions in current file and regex with Test
-    if vfn.executable('sed') == 0 then
+    local tests_results = vfn.systemlist(cmd)
+    if vim.v.shell_error ~= 0 then
+      utils.warn('go test failed' .. cmd .. vim.inspect(tests_results))
       return
     end
 
-    local tests = vfn.systemlist(cmd)
-    if vim.v.shell_error ~= 0 then
-      utils.warn('go test failed' .. vim.inspect(tests))
-      return
-    end
-    return tests[1]
+    log(cmd, vim.v.shell_error, tests_results)
+    return tests_results[1]
   end
-  local sep = '|'
-  local testsstr = vim.fn.join(tests, sep)
-  utils.log(tests, testsstr)
+  local testsstr = vim.fn.join(tests, '|')
+  log('test test cases', tests, testsstr)
   return testsstr, tests
 end
 
 M.test_file = function(...)
   local args = { ... }
-  log(args)
+  log('test file', args)
 
   -- require sed
   local tests = M.get_test_cases()
@@ -595,17 +582,11 @@ M.test_file = function(...)
     return M.test_package(...)
   end
 
-  local optarg, _, reminder = getopt.get_opts(args, short_opts, long_opts)
-
-  local run_in_floaterm = optarg['F'] or _GO_NVIM_CFG.run_in_floaterm
-
   if vfn.empty(tests) == 1 then
     vim.notify('no test found fallback to package test', vim.log.levels.DEBUG)
     M.test_package(...)
     return
   end
-
-  local tags = M.get_build_tags(args)
 
   local test_runner = _GO_NVIM_CFG.go
   if _GO_NVIM_CFG.test_runner ~= 'go' then
@@ -613,86 +594,72 @@ M.test_file = function(...)
     if not install(test_runner) then
       test_runner = 'go'
     end
-    if test_runner == 'ginkgo' then
+    if test_runner == 'ginkgo' or ginkgo.is_ginkgo_file() then
       ginkgo.test_file(...)
     end
   end
 
   local relpath = utils.rel_path(true)
   log(relpath)
+  --
+  -- local optarg, _, reminder = getopt.get_opts(args, short_opts, long_opts)
+  --
+  -- local run_in_floaterm = optarg['F'] or _GO_NVIM_CFG.run_in_floaterm
+  -- local tags = M.get_build_tags(args)
+  --
+  -- local cmd_args = { 'go', 'test' }
+  -- if run_in_floaterm then
+  --   cmd_args[1] = test_runner or 'go'
+  -- end
+  --
+  -- if (optarg['v'] or _GO_NVIM_CFG.verbose_tests) and _GO_NVIM_CFG.test_runner == 'go' then
+  --   table.insert(cmd_args, '-v')
+  -- end
+  --
+  -- if tags ~= nil then
+  --   table.insert(cmd_args, tags)
+  -- end
+  --
+  -- if next(reminder) then
+  --   vim.list_extend(cmd_args, reminder)
+  -- end
+  -- if optarg['n'] then
+  --   table.insert(cmd_args, '-count=' .. (optarg['n'] or '1'))
+  --   table.insert(cmd_args, optarg['n'] or '1')
+  -- end
+  --
+  -- if optarg['C'] then
+  --   table.insert(cmd_args, '-coverprofile=' .. optarg['C'])
+  -- end
+  --
+  local cmd_args, optarg = cmd_builder(relpath, args)
 
-  local cmd_args = {}
-  if run_in_floaterm then
-    table.insert(cmd_args, test_runner)
-    table.insert(cmd_args, 'test')
-  end
-
-  if (optarg['v'] or _GO_NVIM_CFG.verbose_tests) and _GO_NVIM_CFG.test_runner == 'go' then
-    table.insert(cmd_args, '-v')
-  end
-
-  if tags ~= nil then
-    table.insert(cmd_args, tags)
-  end
-
-  if next(reminder) then
-    vim.list_extend(cmd_args, reminder)
-  end
-  if optarg['n'] then
-    if run_in_floaterm then
-      table.insert(cmd_args, '-count=' .. (optarg['n'] or '1'))
-      table.insert(cmd_args, optarg['n'] or '1')
-    else
-      table.insert(cmd_args, '-n')
-      table.insert(cmd_args, optarg['n'] or '1')
-    end
-  end
-
-  if optarg['C'] then
-    if run_in_floaterm then
-      table.insert(cmd_args, '-coverprofile=' .. optarg['C'])
-    else
-      table.insert(cmd_args, '-C')
-      table.insert(cmd_args, optarg['C'])
-    end
-  end
-
-  if run_in_floaterm then
-    table.insert(cmd_args, '-run')
-  else
-    table.insert(cmd_args, '-r')
-  end
+  table.insert(cmd_args, '-test.run')
 
   if is_windows then
-    tests = tests
+    tests = '"' .. tests .. '"'
   else
     tests = "'" .. tests .. "'"
   end
   table.insert(cmd_args, tests) -- shell script | is a pipe
-  table.insert(cmd_args, relpath)
 
-  if run_in_floaterm then
-    install('richgo')
+  if optarg['F'] or _GO_NVIM_CFG.run_in_floaterm then
     local term = require('go.term').run
-    cmd_args = richgo(cmd_args)
-    cmd_args = table.concat(cmd_args, ' ')
+    local cmd_args_str = table.concat(cmd_args, ' ')
     log(cmd_args)
-    term({ cmd = cmd_args, autoclose = false })
+    term({ cmd = cmd_args_str, autoclose = false })
     return cmd_args
   end
 
   if _GO_NVIM_CFG.test_runner == 'dlv' then
     cmd_args = { 'dlv', 'test', relpath, '--', '-test.run', tests }
-    cmd_args = table.concat(cmd_args, ' ')
     local term = require('go.term').run
-    term({ cmd = cmd_args, autoclose = false })
+    term({ cmd = table.concat(cmd_args, ' '), autoclose = false })
+    log(cmd_args)
     return cmd_args
   end
-
-  vim.cmd([[setl makeprg=]] .. _GO_NVIM_CFG.go .. [[\ test]])
   log(cmd_args)
-
-  local cmdret = require('go.asyncmake').make(unpack(cmd_args))
+  local cmdret = require('go.asyncmake').runjob(cmd_args, 'go test', args)
 
   utils.log('test cmd: ', cmdret, ' finished')
   return cmdret
@@ -702,10 +669,16 @@ end
 -- https://github.com/rentziass/dotfiles/blob/master/vim/.config/nvim/lua/rentziass/lsp/go_tests.lua
 M.run_file = function()
   local bufnr = vim.api.nvim_get_current_buf()
-  local tree = vim.treesitter.get_parser(bufnr):parse()[1]
+  local parser = vim.treesitter.get_parser(bufnr, 'go')
+  if not parser then
+    vim.notify('go treesitter parser not found for ' .. vim.fn.bufname(), vim.log.levels.WARN)
+    return log('no ts parser found')
+  end
+  local tree = parser:parse()[1]
   local query = parse('go', require('go.ts.textobjects').query_test_func)
 
   local test_names = {}
+  local get_node_text = vim.treesitter.get_node_text
   for id, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
     local name = query.captures[id] -- name of the capture in the query
     if name == 'test_name' then
@@ -725,33 +698,33 @@ M.get_testfunc = function()
   local bufnr = get_test_filebufnr()
 
   -- Note: the buffer may not be loaded yet
-  local ok, parser = pcall(vim.treesitter.get_parser, bufnr)
-  if not ok or not parser then
-    return
+  local parser = vim.treesitter.get_parser(bufnr, 'go')
+  if not parser then
+    vim.notify('go treesitter parser not found for ' .. vim.fn.bufname(), vim.log.levels.WARN)
+    return log('no parser found')
   end
-  local tree = parser:parse()
-  tree = tree[1]
+  local tree = parser:parse()[1]
   local query = parse('go', require('go.ts.go').query_test_func)
 
   local test_names = {}
+
+  local get_node_text = vim.treesitter.get_node_text
   for id, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
     local name = query.captures[id] -- name of the capture in the query
+    -- log(node)
     if name == 'test_name' then
       table.insert(test_names, utils.get_node_text(node, bufnr))
     end
   end
-
+  log('TS test names', test_names)
   return test_names
 end
 
 -- GUI to select test?
-M.select_tests = function()
-  local guihua = utils.load_plugin('guihua.lua', 'guihua.gui')
+M.select_tests = function(args)
   local original_select = vim.ui.select
 
-  if guihua then
-    vim.ui.select = require('guihua.gui').select
-  end
+  vim.ui.select = _GO_NVIM_CFG.go_select()
 
   vim.defer_fn(function()
     vim.ui.select = original_select
@@ -761,8 +734,21 @@ M.select_tests = function()
     if not item then
       return
     end
+
     local uri = vim.uri_from_bufnr(0)
+    local fpath = M.get_test_path()
+    local cmd_args, optarg = cmd_builder(fpath, args)
     log(uri, item, idx)
+
+    if optarg['F'] or _GO_NVIM_CFG.run_in_floaterm then
+      table.insert(cmd_args, '-test.run=' .. format_test_name(item))
+
+      local term = require('go.term').run
+      log(cmd_args)
+      term({ cmd = cmd_args, autoclose = false })
+      return
+    end
+
     vim.schedule(function()
       vim.lsp.buf.execute_command({
         command = 'gopls.run_tests',

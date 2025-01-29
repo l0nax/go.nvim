@@ -5,8 +5,7 @@ local log = util.log
 local trace = util.trace
 local getopt = require('go.alt_getopt')
 
-local os_name = vim.loop.os_uname().sysname
-local is_windows = os_name == 'Windows' or os_name == 'Windows_NT'
+local is_windows = util.is_windows()
 local is_git_shell = is_windows
   and (vim.fn.exists('$SHELL') and vim.fn.expand('$SHELL'):find('bash.exe') ~= nil)
 
@@ -31,19 +30,17 @@ local long_opts = {
   tags = 't',
   args = 'a',
   count = 'n',
-  bench = 'b',
+  build = 'b',
   run = 'r',
   floaterm = 'F',
   fuzz = 'f',
 }
 
-local short_opts = 'a:vcC:f:t:bn:Fr:g'
+local short_opts = 'a:ct:b:Fg'
 local bench_opts = { '-benchmem', '-cpuprofile', 'profile.out' }
 
 function M.make(...)
   local args = { ... }
-  local lines = {}
-  local errorlines = {}
   local winnr = vim.fn.win_getid()
   local bufnr = vim.api.nvim_win_get_buf(winnr)
   local makeprg = vim.api.nvim_buf_get_option(bufnr, 'makeprg')
@@ -112,14 +109,6 @@ function M.make(...)
   end
   local compile_test = false
 
-  if makeprg:find('test') then
-    if optarg['c'] then
-      log('compile test')
-      compile_test = true
-      efm = compile_efm()
-    end
-  end
-
   if makeprg:find('go run') then
     runner = 'go run'
     if args == nil or #args == 0 or (#args == 1 and args[1] == '-F') then
@@ -157,77 +146,51 @@ function M.make(...)
     end
   end
 
-  local bench = false
-  if makeprg:find('go test') then
-    log('go test')
-    runner = 'go test'
-    efm = compile_efm()
-
-    for _, arg in ipairs(args) do
-      --check if it is bench test
-      if arg:find('-bench') then
-        bench = true
-      end
-    end
-
-    if optarg['v'] then
-      table.insert(cmd, '-v')
-    end
-
-    if optarg['C'] then
-      table.insert(cmd, '-coverprofile=' .. optarg['C'])
-    end
-    if optarg['f'] then
-      log('fuzz test')
-      table.insert(cmd, '-fuzz')
-    end
-    if optarg['n'] then
-      table.insert(cmd, '-count=' .. optarg['n'])
-    end
-    if not bench and compile_test then
-      table.insert(cmd, '-c')
-    end
-    if optarg['r'] then
-      log('run test', optarg['r'])
-      table.insert(cmd, '-run')
-      table.insert(cmd, optarg['r'])
-    end
-  end
-
-  if bench then
-    cmd = vim.list_extend(cmd, args)
-  elseif args and #args > 0 then
+  if args and #args > 0 then
     cmd = vim.list_extend(cmd, reminder)
   end
 
   if optarg['a'] then
-    table.insert(cmd, '-args')
-    table.insert(cmd, optarg['a'])
-  end
-
-  local function handle_color(line)
-    if _GO_NVIM_CFG.run_in_floaterm or optarg['F'] then
-      return line
+    if runner == 'go run' then
+      table.insert(cmd, optarg['a'])
+    else
+      table.insert(cmd, '-args')
+      table.insert(cmd, optarg['a'])
     end
-    if tonumber(vim.fn.match(line, '\\%x1b\\[[0-9;]\\+')) < 0 then
-      return line
-    end
-    if type(line) ~= 'string' then
-      return line
-    end
-    line = vim.fn.substitute(line, '\\%x1b\\[[0-9;]\\+[mK]', '', 'g')
-    log(line)
-    return line
   end
 
   if _GO_NVIM_CFG.run_in_floaterm or optarg['F'] then
     local term = require('go.term').run
-    cmd = table.concat(cmd, ' ')
     term({ cmd = cmd, autoclose = false })
-    return
+    return cmd
   end
+  return M.runjob(cmd, runner, efm, args)
+end
+
+local function handle_color(line)
+  -- remove ctrl-i tab
+  line = string.gsub(line, '\t', ' ')
+  line = string.gsub(line, '^I', ' ')
+  if tonumber(vim.fn.match(line, '\\%x1b\\[[0-9;]\\+')) < 0 then
+    return line
+  end
+  if type(line) ~= 'string' then
+    return line
+  end
+  line = vim.fn.substitute(line, '\\%x1b\\[[0-9;]\\+[mK]', '', 'g')
+  log(line)
+  return line
+end
+
+M.runjob = function(cmd, runner, args, efm)
+  vim.validate({ cmd = { cmd, 't' }, runner = { runner, 's' } })
+
+  efm = efm or compile_efm()
   local failed = false
   local itemn = 1
+  local lines = {}
+  local errorlines = {}
+  local cmdstr = vim.fn.join(cmd, ' ') -- cmd list run without shell, cmd string run with shell
 
   local package_path = (cmd[#cmd] or '')
   if package_path ~= nil then
@@ -240,8 +203,6 @@ function M.make(...)
   else
     package_path = ''
   end
-
-  local cmdstr = vim.fn.join(cmd, ' ') -- cmd list run without shell, cmd string run with shell
   local Sprite = util.load_plugin('guihua.lua', 'guihua.sprite')
   local sprite
   if Sprite then
@@ -258,19 +219,24 @@ function M.make(...)
   end
 
   local function on_event(job_id, data, event)
-    -- log("stdout", data, event)
-    if event == 'stdout' then
+
+    if event == 'stdout' or vim.fn.empty(event) == 1 then
+
       if data then
         for _, value in ipairs(data) do
           if value ~= '' then
-            if value:find('=== RUN') or value:find('no test file') then
+            if value:find('=== RUN') then
               goto continue
             end
 
             value = handle_color(value)
+            if value:find('no test files') then
+              value = vim.trim(value)
+            end
             if value:find('FAIL') then
               failed = true
               if value == 'FAIL' then
+                value = 'FAIL: ' .. cmdstr
                 goto continue
               end
             end
@@ -278,7 +244,7 @@ function M.make(...)
             if vim.fn.empty(vim.fn.glob(args[#args])) == 0 then -- pkg name in args
               changed = true
               if value:find('FAIL') == nil then
-                local p, fn, ln = extract_filepath(value, package_path)
+                local p, _, _ = extract_filepath(value, package_path)
                 if p == true then -- path existed, but need to attach the pkg name
                   -- log(fn, ln, package_path, package_path:gsub('%.%.%.', ''))
                   -- remove ... in package path
@@ -288,7 +254,9 @@ function M.make(...)
             else
               local p, n = extract_filepath(value)
 
-              log(p, n, #lines)
+              if p or n then
+                log(p, n, #lines)
+              end
               if p == true then
                 failed = true
                 value = vim.fs.dirname(n) .. '/' .. util.ltrim(value)
@@ -296,8 +264,8 @@ function M.make(...)
                 log(value)
               end
             end
-            log(value, #lines)
             table.insert(lines, value)
+            log('output: ', value, #lines)
             if itemn == 1 and failed and changed then
               itemn = #lines
             end
@@ -326,12 +294,37 @@ function M.make(...)
       _GO_NVIM_CFG.on_stderr(event, data)
     end
 
-    if event == 'exit' then
-      sprite.on_close()
-      if type(cmd) == 'table' then
-        cmd = table.concat(cmd, ' ')
+    if cmdstr:find('go run') then
+      -- lets have some realtime feedbacks
+      local line_read = {}
+      if #lines > 0 then
+        line_read = vim.list_extend(line_read, lines)
       end
-      local info = cmd
+      if #errorlines > 0 then
+        line_read = vim.list_extend(line_read, errorlines)
+      end
+      -- normally the quickfix is 10lines in height
+      -- so we should truncate the output to 10 lines
+      if #line_read > 10 then
+        line_read = vim.list_slice(line_read, 1, 10)
+      end
+
+      log(line_read)
+      if #line_read > 0 then
+        vim.fn.setqflist({}, ' ', {
+          title = cmdstr,
+          lines = line_read,
+        })
+        -- if quickfix is not open, open it
+        util.quickfix('botright copen')
+      end
+
+    end
+    if event == 'exit' then
+      log(info)
+
+      sprite.on_close()
+      local info = cmdstr
       local level = vim.log.levels.INFO
       if #errorlines > 0 then
         if #lines > 0 then
@@ -339,68 +332,87 @@ function M.make(...)
         end
         trace(errorlines)
         vim.fn.setqflist({}, ' ', {
-          title = cmd,
+          title = info,
           lines = errorlines,
           efm = efm,
         })
         failed = true
-        log(errorlines[1], job_id)
-        vim.cmd([[echo v:shell_error]])
+        log('exit with errorlines: ', errorlines[1], job_id)
+        vim.schedule(function()
+          vim.cmd([[echo v:shell_error]])
+        end)
       elseif #lines > 0 then
         trace(lines)
         local opts = {}
         if _GO_NVIM_CFG.test_efm == true then
           efm = require('go.gotest').efm()
           opts = {
-            title = cmd,
+            title = info,
             lines = lines,
             efm = efm,
           }
         else
           opts = {
-            title = cmd,
+            title = info,
             lines = lines,
           }
         end
         vim.fn.setqflist({}, ' ', opts)
+      elseif vim.fn.getqflist({ title = 0 }).title == cmdstr then
+         vim.fn.setqflist({}, ' ', {lines = {}})
+         vim.api.nvim_command([[:cclose]])
       end
 
       if tonumber(data) ~= 0 then
         failed = true
-        info = info .. ' exited with code: ' .. tostring(data)
+        -- stylua: ignore
+        info = info .. ' exited with code: ' .. tostring(data) .. ' error lines: ' .. vim.inspect(errorlines)
         level = vim.log.levels.ERROR
       end
       _GO_NVIM_CFG.job_id = nil
       if failed then
-        cmd = cmd .. ' go test failed'
+        info = info .. ' go test failed'
         level = vim.log.levels.WARN
         util.quickfix('botright copen')
       end
 
       itemn = 1
-      if failed then
-        vim.notify(info .. ' failed', level)
+      if failed or vim.v.shell_error ~= 0 then
+        -- noticed even cmd succeed, shell_error still been set
+        local f = ' failed '
+        if not failed then
+          f = ' finished '
+        end
+        local output = string.format('%s %s message: %s with code %d', info, f, vim.inspect(errorlines), vim.v.shell_error)
+        vim.notify(output, level)
       else
-        vim.notify(info .. ' succeed', level)
+        local output = info .. ' succeed '
+        local l = #lines > 0 and table.concat(lines, '\n\r') or ''
+        vim.notify(output .. ' ' .. l, level)
       end
       failed = false
       _GO_NVIM_CFG.on_exit(event, data)
     end
   end
 
-  -- releative dir does not work without shell
+  -- relative dir does not work without shell
   log('cmd ', cmdstr)
-  if is_windows then -- gitshell is more like cmd.exe
-    cmdstr = cmd
+  local runcmd = cmdstr
+  if is_windows then -- gitshell & cmd.exe prefer list
+    runcmd = cmd
   end
-  _GO_NVIM_CFG.job_id = vim.fn.jobstart(cmdstr, {
+  local buffered = true
+  if cmdstr:find('go run') then
+    buffered = false
+  end
+  _GO_NVIM_CFG.job_id = vim.fn.jobstart(runcmd, {
     on_stderr = on_event,
     on_stdout = on_event,
     on_exit = on_event,
-    stdout_buffered = true,
-    stderr_buffered = true,
+    stdout_buffered = buffered,
+    stderr_buffered = buffered,
   })
-  _GO_NVIM_CFG.on_jobstart(cmdstr)
+  _GO_NVIM_CFG.on_jobstart(runcmd)
   return cmd
 end
 
@@ -416,5 +428,5 @@ M.stopjob = function(id)
     util.warn('failed to stop job ' .. tostring(id))
   end
 end
-
+M.compile_efm = compile_efm
 return M

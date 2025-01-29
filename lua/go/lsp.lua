@@ -7,21 +7,19 @@ local diagnostic_map = function(bufnr)
   api.nvim_buf_set_keymap(bufnr, 'n', ']O', ':lua vim.diagnostic.setloclist()<CR>', opts)
 end
 
-if vim.lsp.buf.format == nil then
-  -- neovim < 0.8 only
-  vim.lsp.buf.format = function(options)
-    if options.async then
-      vim.lsp.buf.formatting()
-    else
-      vim.lsp.buf.formatting_sync()
-    end
-  end
+if vim.fn.has('nvim-0.8.3') ~= 1 then
+  return vim.notify(
+    'Please upgrade to neovim 0.8.3 or above',
+    vim.log.levels.ERROR,
+    { title = 'Error' }
+  )
 end
 
 local codelens_enabled = false
 
 local on_attach = function(client, bufnr)
-  log('go.nvim on_on_attach', client, bufnr)
+  log('go.nvim on_on_attach', bufnr)
+  trace('go.nvim gopls info', client)
   local function buf_set_keymap(...)
     vim.api.nvim_buf_set_keymap(bufnr, ...)
   end
@@ -41,60 +39,71 @@ local on_attach = function(client, bufnr)
   end
 
   if _GO_NVIM_CFG.lsp_codelens then
-    codelens_enabled = (client.server_capabilities.codeLensProvider ~= false)
-    if not codelens_enabled then
-      vim.notify('codelens not support by your gopls', vim.log.levels.WARN)
-    end
-    vim.lsp.codelens.refresh()
+    vim.lsp.codelens.refresh({ bufnr = 0 })
   end
-
+  local keymaps
   if _GO_NVIM_CFG.lsp_keymaps == true then
-    log('go.nvim lsp_keymaps', client, bufnr)
-    buf_set_keymap('n', '<Leader>ff', '<Cmd>lua vim.lsp.buf.format({async = true}))<CR>', opts)
-    buf_set_keymap('n', 'gd', '<Cmd>lua vim.lsp.buf.definition()<CR>', opts)
-    buf_set_keymap('n', 'K', '<Cmd>lua vim.lsp.buf.hover()<CR>', opts)
-    buf_set_keymap('n', 'gi', '<cmd>lua vim.lsp.buf.implementation()<CR>', opts)
-    buf_set_keymap('n', '<C-k>', '<cmd>lua vim.lsp.buf.signature_help()<CR>', opts)
-    buf_set_keymap('n', '<space>wa', '<cmd>lua vim.lsp.buf.add_workspace_folder()<CR>', opts)
-    buf_set_keymap('n', '<space>wr', '<cmd>lua vim.lsp.buf.remove_workspace_folder()<CR>', opts)
-    buf_set_keymap(
-      'n',
-      '<space>wl',
-      '<cmd>lua print(vim.inspect(vim.lsp.buf.list_workspace_folders()))<CR>',
-      opts
-    )
-    buf_set_keymap('n', 'gD', '<cmd>lua vim.lsp.buf.type_definition()<CR>', opts)
-    buf_set_keymap('n', '<space>rn', "<cmd>lua require('go.rename').run()<CR>", opts)
-    buf_set_keymap(
-      'n',
-      '<space>ca',
-      "<cmd>lua require('go.codeaction').run_code_action()<CR>",
-      opts
-    )
-    buf_set_keymap(
-      'v',
-      '<space>ca',
-      "<cmd>lua require('go.codeaction').run_range_code_action()<CR>",
-      opts
-    )
-    buf_set_keymap('n', 'gr', '<cmd>lua vim.lsp.buf.references()<CR>', opts)
-    buf_set_keymap('n', '<space>e', '<cmd>lua vim.diagnostic.open_float()<CR>', opts)
-    buf_set_keymap('n', '[d', '<cmd>lua vim.diagnostic.goto_prev()<CR>', opts)
-    buf_set_keymap('n', ']d', '<cmd>lua vim.diagnostic.goto_next()<CR>', opts)
-    buf_set_keymap('n', '<space>q', '<cmd>lua vim.diagnostic.setloclist()<CR>', opts)
+    log('go.nvim lsp_keymaps', bufnr)
+    keymaps = {
+      { key = 'gd', func = vim.lsp.buf.definition, desc = 'goto definition' },
+      { key = 'K', func = vim.lsp.buf.hover, desc = 'hover' },
+      { key = 'gi', func = vim.lsp.buf.implementation, desc = 'goto implementation' },
+      { key = '<C-k>', func = vim.lsp.buf.signature_help, desc = 'signature help' },
+      { key = '<space>wa', func = vim.lsp.buf.add_workspace_folder, desc = 'add workspace' },
+      {
+        key = '<space>wr',
+        func = vim.lsp.buf.remove_workspace_folder,
+        desc = 'remove workspace',
+      },
+      {
+        key = '<space>wl',
+        func = function()
+          print(vim.inspect(vim.lsp.buf.list_workspace_folders()))
+        end,
+        desc = 'list workspace',
+      },
+      { key = 'gD', func = vim.lsp.buf.type_definition, desc = 'goto type definition' },
+      { key = '<space>rn', func = require('go.rename').run, desc = 'rename' },
+      { key = '<space>ca', func = require('go.codeaction').run_code_action, desc = 'code action' },
+      {
+        mode = 'v',
+        key = '<space>ca',
+        func = require('go.codeaction').run_code_action,
+        desc = 'range code action',
+      },
+      { key = 'gr', func = vim.lsp.buf.references, desc = 'references' },
+      { key = '<space>e', func = vim.diagnostic.open_float, desc = 'diagnostic' },
+      { key = '[d', func = vim.diagnostic.goto_prev, desc = 'diagnostic prev' },
+      { key = ']d', func = vim.diagnostic.goto_next, desc = 'diagnostic next' },
+      { key = '<space>q', func = vim.diagnostic.setloclist, desc = 'diagnostic loclist' },
+    }
 
-    if client.server_capabilities.documentFormattingProvider then
-      buf_set_keymap('n', '<space>ff', '<cmd>lua vim.lsp.buf.format({async = true})<CR>', opts)
+    if client.server_capabilities.documentFormattingProvider and keymaps then
+      table.insert(keymaps, {
+        key = '<space>ff',
+        func = function()
+          vim.lsp.buf.format({ async = _GO_NVIM_CFG.lsp_format_async })
+        end,
+        desc = 'format',
+      })
     end
-
-    -- local vim_version = vim.version().major * 100 + vim.version().minor * 10 + vim.version().patch
   elseif type(_GO_NVIM_CFG.lsp_keymaps) == 'function' then
     _GO_NVIM_CFG.lsp_keymaps(bufnr)
   end
-  if client.name == 'gopls' and vim.fn.has('nvim-0.8.3') == 1 then
+  if keymaps then
+    opts.buffer = bufnr
+    for _, keymap in pairs(keymaps) do
+      if keymap.key == nil or keymap.func == nil then
+        vim.notify('invalid keymap' .. vim.inspect(keymap), vim.log.levels.WARN)
+        return
+      end
+      vim.keymap.set(keymap.mode or 'n', keymap.key, keymap.func, opts)
+    end
+  end
+  if client.name == 'gopls' then
     local semantic = client.config.capabilities.textDocument.semanticTokens
     local provider = client.server_capabilities.semanticTokensProvider
-    if semantic then
+    if _GO_NVIM_CFG.lsp_semantic_highlights and semantic then
       client.server_capabilities.semanticTokensProvider =
         vim.tbl_deep_extend('force', provider or {}, {
           full = true,
@@ -122,6 +131,8 @@ local on_attach = function(client, bufnr)
               'number',
               'regexp',
               'operator',
+              'namespace',
+              'decorator',
             },
             tokenModifiers = {
               'declaration',
@@ -151,7 +162,15 @@ local extend_config = function(gopls, opts)
       gopls[key] = vim.tbl_deep_extend('force', gopls[key], value)
     else
       if type(gopls[key]) ~= type(value) and key ~= 'handlers' then
-        vim.notify('gopls setup for ' .. key .. ' is not ' .. type(value))
+        vim.notify(
+          'gopls setup for '
+            .. key
+            .. ' type:'
+            .. type(gopls[key])
+            .. ' is not '
+            .. type(value)
+            .. vim.inspect(value)
+        )
       end
       gopls[key] = value
     end
@@ -162,12 +181,18 @@ end
 local M = {}
 
 function M.client()
-  local clients = vim.lsp.get_active_clients()
-  for _, cl in pairs(clients) do
-    if cl.name == 'gopls' then
-      return cl
-    end
+  local f = {
+    bufnr = vim.api.nvim_get_current_buf(),
+    name = 'gopls',
+  }
+
+  local has0_10 = vim.fn.has('nvim-0.10') == 1
+  local clients
+  if not has0_10 then
+    vim.lsp.get_clients = vim.lsp.get_active_clients
   end
+  clients = vim.lsp.get_clients(f) or {}
+  return clients[1]
 end
 
 function M.config()
@@ -192,7 +217,6 @@ function M.config()
   if _GO_NVIM_CFG.gopls_cmd then
     gopls.cmd = _GO_NVIM_CFG.gopls_cmd
   else
-    gopls.cmd = { 'gopls' }
     require('go.install').install('gopls')
   end
 
@@ -218,11 +242,6 @@ function M.setup()
     return
   end
 
-  local vim_version = vim.version().major * 100 + vim.version().minor * 10 + vim.version().patch
-
-  if vim_version < 61 then
-    vim.notify('LSP: go.nvim requires neovim 0.6.1 or later', vim.log.levels.WARN)
-  end
   log(goplscfg)
   lspconfig.gopls.setup(goplscfg)
 end
@@ -237,44 +256,163 @@ valueSet = { "", "Empty", "QuickFix", "Refactor", "RefactorExtract", "RefactorIn
 write", "source", "source.organizeImports" }
 ]]
 
--- action / fix to take
--- only this action   'refactor.rewrite' source.organizeImports
-M.codeaction = function(action, only, hdlr)
+
+
+local function range_args()
+
+  local vfn = vim.fn
+  if vim.list_contains({ 'i', 'R', 'ic', 'ix' }, vim.fn.mode()) then
+    log('v mode required')
+    return
+  end
+  -- get visual selection
+  local start_lnum, start_col= unpack(api.nvim_buf_get_mark(0, '<'))
+  local end_lnum, end_col = unpack(api.nvim_buf_get_mark(0, '>'))
+  if end_col == 2^31 - 1 then
+    end_col = vfn.strdisplaywidth(vfn.getline(end_lnum))-1
+  end
+  log(start_lnum, start_col, end_lnum, end_col)
+
   local params = vim.lsp.util.make_range_params()
-  log(action, only)
+  params.range ={
+      start = {
+        line = start_lnum - 1,
+        character = start_col,
+      },
+      ['end'] = {
+        line = end_lnum - 1,
+        character = end_col,
+      },
+  }
+  return params
+end
+-- action / fix to take
+-- only gopls
+M.codeaction = function(args)
+  local gopls_cmd = args.cmd
+  local only = args.only
+  local filters = args.filters or {}
+  local hdlr = args.hdlr
+  local range = args.range or false
+  vim.validate({
+    gopls_cmd = { gopls_cmd, 'string' },
+    only = { only, 'string', true },
+    filters = { filters, 'table', true },
+    hdlr = { hdlr, 'function', true },
+  })
+
+  hdlr = hdlr or function() end
+  local params = vim.lsp.util.make_range_params()
+  -- check visual mode
+  if range then
+    params = range_args()
+  end
+  if not gopls_cmd:find('gopls') then
+    gopls_cmd = 'gopls.' .. gopls_cmd
+  end
   if only then
     params.context = { only = { only } }
   end
   local bufnr = vim.api.nvim_get_current_buf()
-  vim.lsp.buf_request_all(bufnr, 'textDocument/codeAction', params, function(result)
-    if not result or next(result) == nil then
-      log('nil result')
-      return
+  local gopls = M.client()
+  if gopls == nil then
+    log('gopls not found')
+    return hdlr()
+  end
+
+  local ctx = { bufnr = bufnr, client_id = gopls.id }
+
+  local function apply_action(action)
+    log('apply_action', action, ctx)
+    if vim.fn.empty(action.edit) == 0 then
+      vim.lsp.util.apply_workspace_edit(action.edit, gopls.offset_encoding)
     end
-    log('code action result', result)
-    local c = M.client()
-    for _, res in pairs(result) do
-      for _, r in pairs(res.result or {}) do
-        if r.edit and not vim.tbl_isempty(r.edit) then
-          local re = vim.lsp.util.apply_workspace_edit(r.edit, c.offset_encoding)
-          log('workspace edit', r, re)
-        end
-        if type(r.command) == 'table' then
-          if type(r.command) == 'table' and r.command.arguments then
-            for _, arg in pairs(r.command.arguments) do
-              if action == nil or arg['Fix'] == action then
-                vim.lsp.buf.execute_command(r.command)
-                return
-              end
-            end
+    if action.command then
+      local command = type(action.command) == 'table' and action.command or action
+      local fn = gopls.commands[command.command] or vim.lsp.commands[command.command]
+      ctx.client_id = gopls.id
+      if fn then
+        local enriched_ctx = vim.deepcopy(ctx)
+        fn(command, enriched_ctx)
+        hdlr()
+      else
+        gopls.request('workspace/executeCommand', {
+          command = command.command,
+          arguments = command.arguments,
+          workDoneToken = command.workDoneToken,
+        }, function(_err, r)
+          if _err then
+            log('error', _err)
           end
-        end
+          log('workspace/executeCommand', command.command, r)
+          hdlr()
+        end, bufnr)
+      end
+    else
+      hdlr()
+    end
+  end
+  local function fallback_imports()
+    if only == 'source.organizeImports' then
+      require('go.format').goimports('goimports')
+    end
+  end
+  local function ca_hdlr(err, result, hdl_ctx, config)
+    trace('codeaction', err, result, hdl_ctx, config)
+    if err then
+      return log('error', err)
+    end
+    log('gocodeaction', result)
+    if not result or next(result) == nil then
+      log('nil result for codeaction with parameters', gopls_cmd, only, bufnr, params)
+      return hdlr()
+    end
+    local actions = {}
+    for _, res in pairs(result) do
+      local act_cmd = res.data and res.data.command or ''
+      local fix = res.data
+          and res.data.arguments
+          and res.data.arguments[1]
+          and res.data.arguments[1].Fix
+        or ''
+      log(fix, act_cmd, filters)
+      if
+        res.edit
+        or (act_cmd == gopls_cmd and #filters == 0)
+        or (act_cmd == gopls_cmd and vim.tbl_contains(filters, fix))
+      then
+        table.insert(actions, res)
       end
     end
-    if hdlr then
-      hdlr(result)
+    if #actions == 0 then
+      log('no code actions available')
+      vim.notify('No code actions available, fallback goimports', vim.log.levels.INFO)
+      -- fallback to gofmt/goimports
+      fallback_imports()
+      return hdlr()
     end
-  end)
+
+    local action = actions[1]
+    -- resolve
+    gopls.request('codeAction/resolve', action, function(_err, resolved_action, ctx, config)
+      trace('codeAction/resolve', resolved_action, ctx, config)
+      if _err then
+        log('error', _err)
+        if action.command then
+          apply_action(action)
+        else
+          log('resolved', resolved_action)
+          vim.notify('No code actions can be resolve fallback goimports', vim.log.levels.INFO)
+          fallback_imports()
+          hdlr()
+        end
+      else
+        apply_action(resolved_action)
+      end
+    end, bufnr)
+  end
+  trace('gopls.codeAction', gopls_cmd, only, bufnr, params)
+  gopls.request('textDocument/codeAction', params, ca_hdlr, bufnr)
 end
 
 M.gopls_on_attach = on_attach
@@ -451,14 +589,15 @@ function M.document_symbols(opts)
   params.context = { includeDeclaration = true }
   params.query = opts.prompt or ''
   local symbols
-  vim.lsp.for_each_buffer_client(bufnr, function(client, _, _bufnr)
-    if client.name == 'gopls' then
-      symbols =
-        client.request_sync('textDocument/documentSymbol', params, opts.timeout or 1000, _bufnr)
-      return symbols
-    end
-  end)
-  return symbols
+  local c = M.client()
+  if c ~= nil then
+    return c.request_sync(
+      'textDocument/documentSymbol',
+      params,
+      opts.timeout or 1000,
+      vim.api.nvim_get_current_buf()
+    )
+  end
 end
 
 local change_type = {

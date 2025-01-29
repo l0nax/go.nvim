@@ -52,12 +52,45 @@ local function binary_check()
     no_err = false
     warn('curl is not installed, gocheat will not work.')
   end
+  local required_parsers = {
+    'go',
+  }
+  local optional_parsers = {
+    'gowork',
+    'gomod',
+    'gosum',
+    'sql',
+    'gotmpl',
+    'json',
+    'comment',
+  }
 
-  local parser_path = vim.api.nvim_get_runtime_file('parser' .. sep .. 'go.so', false)[1]
-  if not parser_path then
-    warn('go treesitter parser not found, please Run `:TSInstallSync go`')
-    no_err = false
+  local checkparser = function(parsers, required)
+    local req = ' is required'
+    if not required then
+      req = ' is optional'
+    end
+    for _, parser in ipairs(parsers) do
+      local parser_path =
+        vim.api.nvim_get_runtime_file('parser' .. sep .. parser .. '.so', false)[1]
+      if not parser_path then
+        warn(
+          'treesitter parser '
+            .. parser
+            .. req
+            .. ' but it is not found, please Run `:TSInstallSync '
+            .. parser
+            .. '`'
+            .. ' to install or some features may not work'
+        )
+        no_err = false
+      else
+        info('treesitter parser ' .. parser .. ' found')
+      end
+    end
   end
+  checkparser(required_parsers, true)
+  checkparser(optional_parsers, false)
 
   if no_err then
     ok('All binaries installed')
@@ -122,15 +155,40 @@ local function plugin_check()
   end
 end
 
+-- check if GOBIN is in PATH
+local function path_check(gobin)
+  local path = os.getenv('PATH')
+  if gobin == '' or vim.v.shell_error ~= 0 then
+    util.error('GOBIN is not set')
+    return false
+  end
+  gobin = gobin or 'notfound'
+  -- check GOBIN inside PATH
+  if not vim.tbl_contains(vim.split(path, ':', { trimempty = true }), gobin) then
+    return false
+  end
+  return true
+end
+
+local function goenv()
+  local env = {}
+  local raw = vim.fn.system('go env')
+  for key, value in string.gmatch(raw, '([^=]+)=[\'"]([^\'"]*)[\'"]\n') do
+    env[key] = #value > 0 and value or nil
+  end
+  return env
+end
+
 local function env_check()
-  local envs = { 'GOPATH', 'GOROOT', 'GOBIN' }
+  local env = goenv()
+  local keys = { 'GOROOT', 'GOBIN' }
   local any_warn = false
-  for _, env in ipairs(envs) do
-    if vim.env[env] == nil then
-      info(string.format('%s is not set', env))
+  for _, key in ipairs(keys) do
+    if env[key] == nil then
+      info(string.format('%s is not set', key))
       any_warn = true
     else
-      ok(string.format('%s is set', env))
+      ok(string.format('%s is set', key))
     end
   end
   if any_warn then
@@ -138,12 +196,18 @@ local function env_check()
   else
     ok('All environment variables set')
   end
+  if not path_check(env['GOBIN']) then
+    warn('GOBIN is not in PATH')
+  else
+    ok('GOBIN is in PATH')
+  end
 end
 
 function M.check()
   if vim.fn.has('nvim-0.9') == 0 then
     warn('Suggested neovim version 0.9 or higher')
   end
+
   binary_check()
   plugin_check()
   env_check()

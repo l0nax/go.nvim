@@ -5,30 +5,41 @@ local vfn = vim.fn
 local M = {}
 local cmds = {}
 -- https://go.googlesource.com/tools/+/refs/heads/master/gopls/doc/commands.md
--- "executeCommandProvider":{"commands":["gopls.add_dependency","gopls.add_import","gopls.apply_fix","gopls.check_upgrades","gopls.gc_details","gopls.generate","gopls.generate_gopls_mod","gopls.go_get_package","gopls.list_known_packages","gopls.regenerate_cgo","gopls.remove_dependency","gopls.run_tests","gopls.start_debugging","gopls.test","gopls.tidy","gopls.toggle_gc_details","gopls.update_go_sum","gopls.upgrade_dependency","gopls.vendor","gopls.workspace_metadata"]}
 
 local gopls_cmds = {
   'gopls.add_dependency',
   'gopls.add_import',
+  'gopls.add_telemetry_counters',
   'gopls.apply_fix',
+  'gopls.change_signature',
   'gopls.check_upgrades',
+  'gopls.diagnose_files',
+  'gopls.edit_go_directive',
+  'gopls.fetch_vulncheck_result',
   'gopls.gc_details',
   'gopls.generate',
-  'gopls.generate_gopls_mod',
   'gopls.go_get_package',
-  'gopls.list_known_packages',
   'gopls.list_imports',
+  'gopls.list_known_packages',
+  'gopls.maybe_prompt_for_telemetry',
+  'gopls.mem_stats',
   'gopls.regenerate_cgo',
   'gopls.remove_dependency',
+  'gopls.reset_go_mod_diagnostics',
+  'gopls.run_go_work_command',
+  'gopls.run_govulncheck',
   'gopls.run_tests',
   'gopls.start_debugging',
+  'gopls.start_profile',
+  'gopls.stop_profile',
   'gopls.test',
   'gopls.tidy',
   'gopls.toggle_gc_details',
   'gopls.update_go_sum',
   'gopls.upgrade_dependency',
   'gopls.vendor',
-  'gopls.workspace_metadata',
+  'gopls.views',
+  'gopls.workspace_stats',
 }
 
 local gopls_with_result = {
@@ -37,57 +48,151 @@ local gopls_with_result = {
   'gopls.list_imports',
 }
 
+local gopls_with_edit = {
+  'gopls.add_dependency',
+  'gopls.add_import',
+  'gopls.check_upgrades',
+  'gopls.change_signature',
+}
 local function check_for_error(msg)
   if msg ~= nil and type(msg[1]) == 'table' then
     for k, v in pairs(msg[1]) do
       if k == 'error' then
-        log('LSP', v.message)
+        log('LSP error:', v.message)
+        vim.notify(vim.inspect(v.message), vim.log.levels.INFO)
         break
       end
     end
   end
 end
 
-for _, value in ipairs(gopls_cmds) do
-  local fname = string.sub(value, #'gopls.' + 1)
-  cmds[fname] = function(arg)
+local function apply_changes(cmd, args)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local clients = vim.lsp.get_clients({ bufnr = bufnr })
+  local gopls
+  for _, c in ipairs(clients) do
+    if c.name == 'gopls' then
+      gopls = c
+      break
+    end
+  end
+  if not gopls then
+    vim.notify('gopls not found', vim.log.levels.INFO)
+    return
+  end
+  log('applying changes', cmd, args)
+  gopls.request('workspace/executeCommand', {
+    command = cmd,
+    arguments = args,
+  }, function(_err, changes)
+    if _err then
+      vim.notify(vim.inspect(_err), vim.log.levels.INFO)
+      log('error', _err)
+    end
+    if not changes or not changes.documentChanges then
+      log('no resolved changes', changes)
+      return
+    end
+    log('applying changes', changes)
+    vim.lsp.util.apply_workspace_edit(changes, gopls.offset_encoding)
+  end, bufnr)
+end
+
+for _, gopls_cmd in ipairs(gopls_cmds) do
+  local gopls_cmd_name = string.sub(gopls_cmd, #'gopls.' + 1)
+  cmds[gopls_cmd_name] = function(arg, callback)
+    -- get gopls client
+
     local b = vim.api.nvim_get_current_buf()
+    local clients = vim.lsp.get_clients({ bufnr = b })
+    local gopls
+    for _, c in ipairs(clients) do
+      if c.name == 'gopls' then
+        gopls = c
+        break
+      end
+    end
+    if gopls == nil then
+      vim.notify('gopls not found', vim.log.levels.INFO)
+      return
+    end
     local uri = vim.uri_from_bufnr(b)
     local arguments = { { URI = uri } }
 
     local ft = vim.bo.filetype
-    if ft == 'gomod' or ft == 'gosum' then
-      arguments = { { URIs = { uri } } }
+    if
+      ft == 'gomod'
+      or ft == 'gosum'
+      or gopls_cmd_name == 'tidy'
+      or gopls_cmd_name == 'update_go_sum'
+    then
+      arguments[1].URIs = { uri }
+      arguments[1].URI = nil
     end
     arguments = { vim.tbl_extend('keep', arguments[1], arg or {}) }
 
-    log(fname, arguments)
-    if vim.tbl_contains(gopls_with_result, value) then
-      local resp = vim.lsp.buf_request_sync(b, 'workspace/executeCommand', {
-        command = value,
+    log(gopls_cmd_name, arguments)
+    if vim.tbl_contains(gopls_with_result, gopls_cmd) then
+      local resp = gopls.request_sync('workspace/executeCommand', {
+        command = gopls_cmd,
         arguments = arguments,
-      }, 2000)
+      }, 2000, b)
+
       check_for_error(resp)
       log(resp)
-
       return resp
     end
 
-    vim.schedule(function()
-      local resp = vim.lsp.buf.execute_command({
-        command = value,
-        arguments = arguments,
-      })
-      check_for_error(resp)
-      log(resp)
-    end)
+    if vim.tbl_contains(gopls_with_edit, gopls_cmd) then
+      apply_changes(gopls_cmd, arguments)
+    else
+      vim.schedule(function()
+        -- it likely to be a edit command
+        -- but execute_command may not working in the way gppls want
+        local resp = gopls.request('workspace/executeCommand', {
+          command = gopls_cmd,
+          arguments = arguments,
+        }, function(err, result)
+          if err then
+            log('error', err)
+            vim.notify(vim.inspect(err), vim.log.levels.INFO)
+            return
+          end
+
+          check_for_error(result)
+          if callback then
+            callback(result)
+          end
+        end, b)
+      end)
+    end
   end
 end
+
 M.cmds = cmds
 M.import = function(path)
   cmds.add_import({
     ImportPath = path,
-  })
+  }, require('go.format').gofmt)
+end
+
+M.change_signature = function()
+  local params = vim.lsp.util.make_range_params()
+
+  if params.range['start'].character == params.range['end'].character then
+    log('please select a function signature', params.range)
+    -- return
+  end
+  local lsp_params = {
+    RemoveParameter = {
+      uri = params.textDocument.uri,
+      range = params.range,
+    },
+    ResolveEdits = true,
+  }
+
+  log(lsp_params)
+  cmds.change_signature(lsp_params)
 end
 
 M.list_imports = function(path)
@@ -194,15 +299,19 @@ end
 local function get_build_flags()
   local get_build_tags = require('go.gotest').get_build_tags
   local tags = get_build_tags()
-  log(vim.inspect(tags))
   if tags then
+    log(vim.inspect(tags))
     return tags
   else
     return nil
   end
 end
-
+local range_format = 'textDocument/rangeFormatting'
+local formatting = 'textDocument/formatting'
 M.setups = function()
+  local update_in_insert = _GO_NVIM_CFG.diagnostic and _GO_NVIM_CFG.diagnostic.update_in_insert or false
+  local diagTrigger = update_in_insert and 'Edit' or 'Save'
+  local diagDelay = update_in_insert and '1s' or '250ms'
   local setups = {
     capabilities = {
       textDocument = {
@@ -214,13 +323,22 @@ M.setups = function()
             preselectSupport = true,
             insertReplaceSupport = true,
             labelDetailsSupport = true,
-            snippetSupport = true,
+            snippetSupport = vim.snippet and true or false,
             resolveSupport = {
               properties = {
+                'edit',
                 'documentation',
                 'details',
                 'additionalTextEdits',
               },
+            },
+          },
+          completionList = {
+            itemDefaults = {
+              'editRange',
+              'insertTextFormat',
+              'insertTextMode',
+              'data',
             },
           },
           contextSupport = true,
@@ -238,26 +356,21 @@ M.setups = function()
       local has_lsp, lspconfig = pcall(require, 'lspconfig')
       if has_lsp then
         local util = lspconfig.util
-        return util.root_pattern('go.mod', '.git')(fname) or util.path.dirname(fname)
+        return util.root_pattern('go.work', 'go.mod', '.git')(fname) or util.path.dirname(fname)
       end
     end,
     flags = { allow_incremental_sync = true, debounce_text_changes = 500 },
     settings = {
       gopls = {
         -- more settings: https://github.com/golang/tools/blob/master/gopls/doc/settings.md
+        -- https://github.com/golang/tools/blob/master/gopls/doc/analyzers.md
         -- not supported
         analyses = {
-          unreachable = true,
-          nilness = true,
-          unusedparams = true,
+          -- check analyzers for default values
+          -- leeave most of them to default
+          -- shadow = true,
+          -- unusedvariable = true,
           useany = true,
-          unusedwrite = true,
-          ST1003 = true,
-          undeclaredname = true,
-          fillreturns = true,
-          nonewvars = true,
-          fieldalignment = false,
-          shadow = true,
         },
         codelenses = {
           generate = true, -- show the `go generate` lens.
@@ -268,52 +381,49 @@ M.setups = function()
           regenerate_cgo = true,
           upgrade_dependency = true,
         },
+        hints = vim.empty_dict(),
         usePlaceholders = true,
         completeUnimported = true,
         staticcheck = true,
         matcher = 'Fuzzy',
-        diagnosticsDelay = '500ms',
-        symbolMatcher = 'fuzzy',
+        -- check if diagnostic update_in_insert is set
+        diagnosticsDelay = diagDelay,
+        diagnosticsTrigger = diagTrigger,
+        symbolMatcher = 'FastFuzzy',
+        semanticTokens = true,
+        noSemanticString = true, -- disable semantic string tokens so we can use treesitter highlight injection
+        vulncheck = 'Imports',
         ['local'] = get_current_gomod(),
         gofumpt = _GO_NVIM_CFG.lsp_gofumpt or false, -- true|false, -- turn on for new repos, gofmpt is good but also create code turmoils
         buildFlags = { '-tags', 'integration' },
       },
     },
+    -- NOTE: it is important to add handler to formatting handlers
+    -- the async formatter will call these handlers when gopls respond
+    -- without these handlers, the file will not be saved
+    handlers = {
+      [range_format] = function(...)
+        vim.lsp.handlers[range_format](...)
+        if vfn.getbufinfo('%')[1].changed == 1 then
+          vim.cmd('noautocmd write')
+        end
+      end,
+      [formatting] = function(...)
+        vim.lsp.handlers[formatting](...)
+        if vfn.getbufinfo('%')[1].changed == 1 then
+          vim.cmd('noautocmd write')
+        end
+      end,
+    },
   }
-  if vim.fn.has('nvim-0.8.3') == 1 then
-    setups.settings.gopls.semanticTokens = true
-  end
-  local v = M.version()
-  if v == nil then
-    return
-  end
-
-  v = vim.fn.split(v, '\\D')
-
-  local ver = 0
-  for _, n in ipairs(v) do
-    ver = (ver * 10 + tonumber(n)) or 0
-  end
 
   local tags = get_build_flags()
   if tags and tags ~= '' then
     setups.settings.gopls.buildFlags = { tags }
   end
 
-  if ver > 70 and ver < 100 then
-    setups.settings.gopls = vim.tbl_deep_extend('force', setups.settings.gopls, {
-      experimentalUseInvalidMetadata = true,
-      -- hoverKind = "Structured",
-    })
-  end
-
-  if ver > 80 and ver < 100 then
-    setups.settings.gopls = vim.tbl_deep_extend('force', setups.settings.gopls, {
-      experimentalWatchedFileDelay = '200ms',
-    })
-  end
-  if ver > 90 and _GO_NVIM_CFG.lsp_inlay_hints.enable then
-    setups.settings.gopls = vim.tbl_deep_extend('force', setups.settings.gopls, {
+  if vim.fn.has('nvim-0.10') then
+    setups.settings.gopls = vim.tbl_deep_extend('keep', setups.settings.gopls, {
       hints = {
         assignVariableTypes = true,
         compositeLiteralFields = true,
@@ -329,3 +439,18 @@ M.setups = function()
 end
 
 return M
+
+--[[
+as of 2024-03-01
+     codeActionProvider = {
+        codeActionKinds = { "quickfix", "refactor.extract", "refactor.inline", "refactor.rewrite", "source.fixAll", "source.organizeImports" },
+        resolveProvider = true
+      },
+      executeCommandProvider = {
+        commands = { "gopls.add_dependency", "gopls.add_import", "gopls.add_telemetry_counters", "gopls.apply_fix", "gopls.change_signature", "gopls.check_upgrades", "gopls.diagnose_files", "gopls.edit_go_directive", "gopls.fetch_vulncheck_result", "gopls.
+gc_details", "gopls.generate", "gopls.go_get_package", "gopls.list_imports", "gopls.list_known_packages", "gopls.maybe_prompt_for_telemetry", "gopls.mem_stats", "gopls.regenerate_cgo", "gopls.remove_dependency", "gopls.reset_go_mod_diagnostics", "gopls.run
+_go_work_command", "gopls.run_govulncheck", "gopls.run_tests", "gopls.start_debugging", "gopls.start_profile", "gopls.stop_profile", "gopls.test", "gopls.tidy", "gopls.toggle_gc_details", "gopls.update_go_sum", "gopls.upgrade_dependency", "gopls.vendor", "
+gopls.views", "gopls.workspace_stats" }
+      },
+]]
+--

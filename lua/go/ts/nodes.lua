@@ -11,10 +11,14 @@ local warn = require('go.utils').warn
 local api = vim.api
 local fn = vim.fn
 local M = {}
-local get_node_text = goutil.get_node_text
+local get_node_text = vim.treesitter.get_node_text
 local parse = vim.treesitter.query.parse
 if parse == nil then
   parse = vim.treesitter.query.parse_query
+end
+
+if not _GO_NVIM_CFG.verbose_ts then
+  ulog = function() end
 end
 
 -- Array<node_wrapper>
@@ -63,6 +67,9 @@ end
 --   type: string
 -- }]
 M.get_nodes = function(query, lang, defaults, bufnr)
+  if lang ~= 'go' then
+    return nil
+  end
   bufnr = bufnr or 0
   local success, parsed_query = pcall(function()
     return parse(lang, query)
@@ -75,8 +82,6 @@ M.get_nodes = function(query, lang, defaults, bufnr)
   local parser = parsers.get_parser(bufnr, lang)
   local root = parser:parse()[1]:root()
   local start_row, _, end_row, _ = root:range()
-  -- local n = ts_utils.get_node_at_cursor()
-  -- local a, b, c, d = vim.treesitter.get_node_range(n)
   local results = {}
   for match in ts_query.iter_prepared_matches(parsed_query, root, bufnr, start_row, end_row) do
     local sRow, sCol, eRow, eCol
@@ -129,6 +134,9 @@ M.get_all_nodes = function(query, lang, defaults, bufnr, pos_row, pos_col, ntype
   local filetime = fn.getftime(fn.expand('%'))
   if nodes[key] ~= nil and nodestime[key] ~= nil and filetime == nodestime[key] then
     return nodes[key]
+  end
+  if lang ~= 'go' then
+    return nil
   end
   -- ulog(bufnr, nodestime[key], filetime)
   -- todo a huge number
@@ -196,11 +204,10 @@ M.get_all_nodes = function(query, lang, defaults, bufnr, pos_row, pos_col, ntype
       end
     end)
     if declaration_node ~= nil then
-      ulog(name .. ' ' .. op)
+      ulog(name .. ' ' .. op, sRow, eRow)
       -- ulog(sRow, pos_row)
       if sRow > pos_row then
         ulog(tostring(sRow) .. ' beyond ' .. tostring(pos_row))
-        -- break
       end
       table.insert(results, {
         declaring_node = declaration_node,
@@ -238,7 +245,7 @@ M.nodes_in_buf = function(query, default, bufnr, row, col)
   end
   local ns = M.get_all_nodes(query, ft, default, bufnr, row, col, true)
   if ns == nil then
-    vim.notify('Unable to find any nodes.', vim.log.levels.DEBUG)
+    -- vim.notify('Unable to find any nodes.', vim.log.levels.DEBUG)
     ulog('Unable to find any nodes. place your cursor on a go symbol and try again')
     return nil
   end
@@ -251,6 +258,9 @@ M.nodes_at_cursor = function(query, default, bufnr, ntype)
   row, col = row, col + 1
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   local ft = vim.api.nvim_buf_get_option(bufnr, 'ft')
+  if ft ~= 'go' then
+    return
+  end
   local ns = M.get_all_nodes(query, ft, default, bufnr, row, col, ntype)
   if ns == nil then
     vim.notify(
@@ -260,14 +270,23 @@ M.nodes_at_cursor = function(query, default, bufnr, ntype)
     ulog('Unable to find any nodes. place your cursor on a go symbol and try again')
     return nil
   end
-  ulog(#ns)
+  -- ulog(#ns)
   local nodes_at_cursor = M.sort_nodes(M.intersect_nodes(ns, row, col))
+  if not nodes_at_cursor then
+    -- cmp-command-line will causing cursor to move to end of line
+    -- lets try move back a bit and try to find nodes again
+    row, col = unpack(vim.api.nvim_win_get_cursor(0))
+    row, col = row, col - 5
+    nodes_at_cursor = M.sort_nodes(M.intersect_nodes(ns, row, col))
+  end
   ulog(row, col, vim.inspect(nodes_at_cursor):sub(1, 100))
   if nodes_at_cursor == nil or #nodes_at_cursor == 0 then
-    vim.notify(
-      'Unable to find any nodes at pos. ' .. tostring(row) .. ':' .. tostring(col),
-      vim.log.levels.DEBUG
-    )
+    if _GO_NVIM_CFG.verbose then
+      vim.notify(
+        'Unable to find any nodes at pos. ' .. tostring(row) .. ':' .. tostring(col),
+        vim.log.levels.DEBUG
+      )
+    end
     ulog('Unable to find any nodes at pos. ' .. tostring(row) .. ':' .. tostring(col))
     return nil
   end

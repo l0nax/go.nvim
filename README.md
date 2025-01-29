@@ -1,45 +1,54 @@
 # go.nvim
 
-A modern go neovim plugin based on treesitter, nvim-lsp and dap debugger. It is written in Lua and async as much as possible.
-PR & Suggestions welcome.
+A modern go neovim plugin based on treesitter, nvim-lsp and dap debugger. It is written in Lua and async as much as
+possible. PR & Suggestions are welcome.
+
 The plugin covers most features required for a gopher.
 
 - Perproject setup. Allows you setup plugin behavior per project based on project files(launch.json, .gonvim)
 - Async jobs with libuv
-- Syntax highlight & Texobject: Native treesitter support is faster and more accurate. All you need is a theme support treesitter, try
-  [aurora](https://github.com/ray-x/aurora), [starry.nvim](https://github.com/ray-x/starry.nvim). Also, there are quite a few listed in [awesome-neovim](https://github.com/rockerBOO/awesome-neovim)
-- All the GoToXxx (E.g reference, implementation, definition, goto doc, peek code/doc etc) You need lspconfig setup. There are lots of posts on how to
-  set it up. You can also check my [navigator](https://github.com/ray-x/navigator.lua) gopls setup [lspconfig.lua](https://github.com/ray-x/navigator.lua/blob/master/lua/navigator/lspclient/clients.lua)
-- gopls commands: e.g. fillstruct, organize imports, list modules, list packages, gc_details, generate etc.
-- Runtime lint/vet/compile: Supported by lsp (once you setup up your lsp client), GoLint with golangci-lint also supported
-- Build/Make/Test: Go.nvim provides supports for these by an async job wrapper.
+- Syntax highlight & Texobject: Native treesitter support is faster and more accurate. All you need is a theme support
+  treesitter, try [aurora](https://github.com/ray-x/aurora), [starry.nvim](https://github.com/ray-x/starry.nvim). Also,
+  there are quite a few listed in [awesome-neovim](https://github.com/rockerBOO/awesome-neovim)
+- All the GoToXxx (E.g reference, implementation, definition, goto doc, peek code/doc etc) You need lspconfig setup.
+  There are lots of posts on how to set it up. You can also check my [navigator](https://github.com/ray-x/navigator.lua)
+  gopls setup [lspconfig.lua](https://github.com/ray-x/navigator.lua/blob/master/lua/navigator/lspclient/clients.lua)
+- gopls commands: e.g. fillstruct, organize imports, list modules, list packages, gc_details, generate, change
+  signature, etc.
+- Runtime lint/vet/compile: Supported by LSP (once you set up your LSP client), GoLint with golangci-lint also supported
+- Build/Make/Test: Go.nvim provides support for these by an async job wrapper.
 - Test coverage: run test coverage and show coverage sign and function metrics
-- Dlv Debug: with [nvim-dap](https://github.com/mfussenegger/nvim-dap) and [Dap UI](https://github.com/rcarriga/nvim-dap-ui). Go adapter included, zero config for your debug setup.
+- Dlv Debug: with [nvim-dap](https://github.com/mfussenegger/nvim-dap) and
+  [Dap UI](https://github.com/rcarriga/nvim-dap-ui). Go adapter included, zero config for your debug setup.
 - Load vscode launch configuration
 - Unit test: generate unit test framework with [gotests](https://github.com/cweill/gotests). Run test with
-  richgo/ginkgo/gotestsum/go test
+  ginkgo/gotestsum/go test
 - Add and remove tag for struct with tag modify(gomodifytags)
 - Code format: Supports LSP format and GoFmt(with golines)
 - CodeLens : gopls codelens and codelens action support
-- Comments: Add autodocument for your package/function/struct/interface. This feature is unique and can help you suppress golint
-  errors...
+- Comments: Add autodocument for your package/function/struct/interface. This feature is unique and can help you
+  suppress golint errors...
 - Go to alternative go file (between test and source)
-- Test with ginkgo, richgo inside floaterm (to enable floaterm, guihua.lua has to be installed)
-- Code refactor made easy: GoFixPlural, FixStruct, FixSwitch, Add comment, IfErr, ModTidy, GoGet, extract function/block with codeactions... Most of the tools are built on top of
-  treesitter AST or go AST. Fast and accurate.
+- Test with ginkgo, gotestsum inside floaterm (to enable floaterm, guihua.lua has to be installed)
+- Code refactor made easy: GoFixPlural, FixStruct, FixSwitch, Add comment, IfErr, ModTidy, GoGet, extract function/block
+  with codeactions... Most of the tools are built on top of treesitter AST or go AST. Fast and accurate.
 - GoCheat get go cheatsheet from [cheat.sh](https://cheat.sh/).
 - Smart build tag detection when debug/run tests (e.g. `//go:build integration`)
 - Generate mocks with mockgen
 - Inlay hints: gopls (version 0.9.x or greater) inlay hints; version 0.10.x inlay hints are enabled by default.
 - luasnip: go.nvim included a feature rich luasnips you definitally need to try.
-- Treesitter highlight injection: go.nvim included a treesitter highlight injection for SQL and json.
+- Treesitter highlight injection: go.nvim included a treesitter highlight injection for SQL and JSON.
+- Treesitter also injects highlight for `go template`, `gohtmltmpl`
+- Generate return value for current function
+- Generate go file with template
+- Generate go struct from json
+- MockGen support
 
 ## Installation
 
-Use your favorite package manager to install. The dependency `treesitter` (and optionally, treesitter-objects)
-should be installed the first time you use it.
-Also Run `TSInstall go` to install the go parser if not installed yet.
-`sed` is recommend to run this plugin.
+Use your favorite package manager to install. The dependency `treesitter` (and optionally, treesitter-objects) should be
+installed the first time you use it. Also Run `TSInstall go` to install the go parser if not installed yet. `sed` is
+recommended to run this plugin.
 
 ### [vim-plug](https://github.com/junegunn/vim-plug)
 
@@ -76,7 +85,6 @@ use 'nvim-treesitter/nvim-treesitter'
   ft = {"go", 'gomod'},
   build = ':lua require("go.install").update_all_sync()' -- if you need to install/update all binaries
 }
-
 ```
 
 The go.nvim load speed is fast and you can enable it by default
@@ -102,7 +110,7 @@ local format_sync_grp = vim.api.nvim_create_augroup("GoFormat", {})
 vim.api.nvim_create_autocmd("BufWritePre", {
   pattern = "*.go",
   callback = function()
-   require('go.format').goimport()
+   require('go.format').goimports()
   end,
   group = format_sync_grp,
 })
@@ -148,13 +156,11 @@ To close the floating term.
 
 ## refactor gorename
 
-gorename as an alternative to gopls rename as it supports rename across packages
-Note: use with care
-Command: GoRename
+gorename as an alternative to gopls rename as it supports rename across packages Note: use with care Command: GoRename
 
 ## code format
 
-nvim-lsp support goimport by default.
+nvim-lsp support goimports by default.
 
 ```vim
 autocmd BufWritePre (InsertLeave?) <buffer> lua vim.lsp.buf.formatting_sync(nil,500)
@@ -166,7 +172,7 @@ Use following code to format go code
 
 ```lua
 require("go.format").gofmt()  -- gofmt only
-require("go.format").goimport()  -- goimport + gofmt
+require("go.format").goimports()  -- goimports + gofmt
 ```
 
 ### Format on save
@@ -186,30 +192,26 @@ vim.api.nvim_create_autocmd("BufWritePre", {
   end,
   group = format_sync_grp,
 })
-
-
 ```
 
-#### Run gofmt + goimport on save
+#### Run gofmt + goimports on save
 
 ```lua
--- Run gofmt + goimport on save
+-- Run gofmt + goimports on save
 
-local format_sync_grp = vim.api.nvim_create_augroup("GoImport", {})
+local format_sync_grp = vim.api.nvim_create_augroup("goimports", {})
 vim.api.nvim_create_autocmd("BufWritePre", {
   pattern = "*.go",
   callback = function()
-   require('go.format').goimport()
+   require('go.format').goimports()
   end,
   group = format_sync_grp,
 })
-
-
 ```
 
-## Auto fill
+## Auto-fill
 
-Note: auto fill struct also supported by gopls lsp-action
+Note: auto-fill struct also supported by gopls lsp-action
 
 | command      | Description                                                   |
 | ------------ | ------------------------------------------------------------- |
@@ -233,11 +235,11 @@ func Foo() (io.Reader, error) { // the cursor on this line to add if err stateme
 
 ## Textobject
 
-Supported by treesitter. TS provided better parse result compared to regular expression.
-See the example [treesitter config file](https://github.com/ray-x/go.nvim#text-object) on how to setup
-textobjects. Also with treesitter-objects, you can move, swap the selected blocks of codes, which is fast and accurate.
-`go.nvim` will load textobject with treesiteter, with default keybindings, if you what to set it up yourself, you can
-set `textobject` to false.
+Supported by treesitter. TS provided better parse result compared to regular expression. See the example
+[treesitter config file](https://github.com/ray-x/go.nvim#text-object) on how to setup textobjects. Also with
+treesitter-objects, you can move, swap the selected blocks of codes, which is fast and accurate. `go.nvim` will load
+textobject with treesiteter, with default keybindings, if you what to set it up yourself, you can set `textobject` to
+false.
 
 ## Go binaries install and update
 
@@ -255,13 +257,13 @@ The following go binaries are used in `go.nvim` (depends on your setup):
 - fillswitch
 - dlv
 - ginkgo
-- richgo
 - gotestsum
 - govulncheck
 - goenum
 
-If you run `GoFmt` and the configured binary (e.g. golines) was not installed, the plugin will install it for you. But the
-first run of `GoFmt` may fail. Recommended to run `GoInstallBinaries` to install all binaries before using the plugin.
+If you run `GoFmt` and the configured binary (e.g. golines) was not installed, the plugin will install it for you. But
+the first run of `GoFmt` may fail. Recommended to run `GoInstallBinaries` to install all binaries before using the
+plugin.
 
 | command                        | Description                                                                                                                |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
@@ -272,51 +274,55 @@ first run of `GoFmt` may fail. Recommended to run `GoInstallBinaries` to install
 
 ## Build and test
 
-| command                                    | Description                                                                                                   |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| GoMake                                     | async make, use with other commands                                                                           |
-| GoBuild args                               | go build args (-g: enable debug, %: expand to current file, %:h expand to current package)                    |
-| GoGenerate                                 |                                                                                                               |
-| GoRun {args}                               | e.g. GoRun equal to `go run .`; or `GoRun ./cmd` equal to `go run ./cmd, Additional args: -F run in floaterm` |
-| GoStop {job_id}                            | `stop the job started with GoRun`                                                                             |
-| GoTest                                     | go test ./...                                                                                                 |
-| GoTestSum {pkgname} {gotestsum arguments}  | run gotestsum and show result in side panel                                                                   |
-| GoTestSum -w                               | run gotestsum in watch mode                                                                                   |
-| GoTest -v                                  | go test -v current_file_path                                                                                  |
-| GoTest -c                                  | go test -c current_file_path                                                                                  |
-| GoTest -n                                  | test nearest, see GoTestFunc                                                                                  |
-| GoTest -f                                  | test current file, see GoTestFile                                                                             |
-| GoTest -n 1                                | -count=1 flag                                                                                                 |
-| GoTest -p                                  | test current package, see GoTestPkg                                                                           |
-| GoTest -t yourtags                         | go test ./... -tags=yourtags, see notes                                                                       |
-| GoTest -a your_args                        | go test ./... -args=yourargs, see notes                                                                       |
-| GoTest package_path -t yourtags            | go test packagepath -tags=yourtags                                                                            |
-| GoTest package_path -t yourtags other_args | go test packagepath -tags=yourtags other_args                                                                 |
-| GoLint                                     | golangci-lint                                                                                                 |
-| GoGet {package_url}                        | go get package_url and restart gopls. Note1                                                                   |
-| GoVet                                      | go vet                                                                                                        |
-| GoCoverage                                 | go test -coverprofile                                                                                         |
-| GoCoverage -p                              | go test -coverprofile (only tests package for current buffer)                                                 |
-| GoCoverage -f coverage_file_name           | load coverage file                                                                                            |
-| GoCoverage {flags}                         | -t : toggle, -r: remove signs, -R remove sings from all files, -m show metrics                                |
-| GoCoverage {flags} {go test flags}         | e.g: GoCoverage -p -coverpkg 'yourpackagename'                                                                |
-| GoTermClose                                | `closes the floating term`                                                                                    |
+| command                                     | Description                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| GoMake                                      | async make, use with other commands                                                                           |
+| GoBuild args                                | go build args (-g: enable debug, %: expand to current file, %:h expand to current package)                    |
+| GoGenerate                                  |                                                                                                               |
+| GoRun {args} -a {cmd_args}                  | e.g. GoRun equal to `go run .`; or `GoRun ./cmd` equal to `go run ./cmd, Additional args: -F run in floaterm` |
+| GoRun -a {cmd_args}                         | specify additional arguments pass to your main(), see notes 3                                                 |
+| GoStop {job_id}                             | `stop the job started with GoRun`                                                                             |
+| GoTest                                      | go test ./...                                                                                                 |
+| GoTestSum {pkgname} {gotestsum arguments}   | run gotestsum and show result in side panel                                                                   |
+| GoTestSum -w                                | run gotestsum in watch mode                                                                                   |
+| GoTest -v                                   | go test -v current_file_path                                                                                  |
+| GoTest -c                                   | go test -c current_file_path                                                                                  |
+| GoTest -n                                   | test nearest, see GoTestFunc                                                                                  |
+| GoTest -f                                   | test current file, see GoTestFile                                                                             |
+| GoTest -n 1                                 | -count=1 flag                                                                                                 |
+| GoTest -p {pkgname}                         | test package, see GoTestPkg, test current package if {pkgname} not specified                                  |
+| GoTest -parallel {number}                   | test current package with parallel number                                                                     |
+| GoTest -b {build_flags}                     | run `go test` with build flags e.g. `-b -gcflags="all-N\ -l"`                                                 |
+| GoTest -t yourtags                          | go test ./... -tags=yourtags, see notes                                                                       |
+| GoTest -F ./... \| awk '{$1=$1};1' \| delta | pipe the test output to awk and then delta/diff-so-fancy to show diff output of go test (e.g. testify)        |
+| GoTest -a your_args                         | go test ./... -args=yourargs, see notes                                                                       |
+| GoTest package_path -t yourtags             | go test packagepath -tags=yourtags                                                                            |
+| GoTest package_path -t yourtags other_args  | go test packagepath -tags=yourtags other_args                                                                 |
+| GoLint                                      | golangci-lint                                                                                                 |
+| GoGet {package_url}                         | go get package_url and restart gopls. Note1                                                                   |
+| GoVet                                       | go vet                                                                                                        |
+| GoWork {run                                 | use} {pkgpath}                                                                                                |
+| GoCoverage                                  | go test -coverprofile                                                                                         |
+| GoCoverage -p                               | go test -coverprofile (only tests package for current buffer)                                                 |
+| GoCoverage -f coverage_file_name            | load coverage file                                                                                            |
+| GoCoverage {flags}                          | -t : toggle, -r: remove signs, -R remove sings from all files, -m show metrics                                |
+| GoCoverage {flags} {go test flags}          | e.g: GoCoverage -p -coverpkg 'yourpackagename'                                                                |
+| GoTermClose                                 | `closes the floating term`                                                                                    |
 
 Note:
 
-1. if package_url not provided, will check current line is a valid package url or not, if it is valid, will
-   fetch current url
+1. if package_url not provided, will check current line is a valid package url or not, if it is valid, will fetch
+   current url
 2. tags: if `//+build tags` exist it will be added automatically
-3. args: if multiple args is provided, you need toconcatenate it with '\ ', e.g. GoTest -args yourtags\ other_args
+3. args: if multiple args is provided, you need toconcatenate it with '\ ', e.g. GoTest -a yourtags\ other_args
 4. % will expand to current file path, e.g. GoBuild %
 
 Show test coverage:
 
 <img width="479" alt="GoTestCoverage" src="https://user-images.githubusercontent.com/1681295/130821038-fa2545c6-16f6-4448-9a0c-91a1ab333750.png">
 
-Provided wrapper for gobulild/test etc with async make
-Also suggest to use [vim-test](https://github.com/vim-test/vim-test), which can run running tests on different
-granularities.
+Provided wrapper for gobulild/test etc with async make Also suggest to use
+[vim-test](https://github.com/vim-test/vim-test), which can run running tests on different granularities.
 
 ## Unit test with [gotests](https://github.com/cweill/gotests) and testify
 
@@ -345,7 +351,7 @@ GoTestXXX Arguments
 | -n        | count         |
 | -t        | tags          |
 | -f        | fuzz          |
-| -b        | bench         |
+| -bench    | bench test    |
 | -m        | metric        |
 | -s        | select        |
 | -p        | package       |
@@ -354,7 +360,8 @@ GoTestXXX Arguments
 
 Note: For GoTestXXX
 
-You can add available arguments with long name or character flag e.g. `GoTest -tags=integration ./internal/web -b=. -count=1 -`
+You can add available arguments with long name or character flag e.g.
+`GoTest -tags=integration ./internal/web -b=. -count=1 -`
 
 You can also add other unmapped arguments after the `-a` or `-args` flag `GoTest -a mock=true`
 
@@ -372,17 +379,14 @@ If no argument provided, fallback to lsp.hover()
 
 ## GoPkgOutline
 
-A symbole outline for all symbols (var, const, func, struct, interface etc) inside a package
-You can still use navigator or sidebar plugins (e.g. vista, symbols-outline) to check outline within a file. But it
-is more useful for go to check the symbols in a package, as those symbols are visuals inside package, also the
-method can be defined in different source file.
+A symbole outline for all symbols (var, const, func, struct, interface etc) inside a package You can still use navigator
+or sidebar plugins (e.g. vista, symbols-outline) to check outline within a file. But it is more useful for go to check
+the symbols in a package, as those symbols are visuals inside package, also the method can be defined in different
+source file.
 
-Command format:
-GoPkgOutline {options}
-options:
--f: show in floatwing window (default side panel, both require quihua.lua)
--p package_name: the package you want to list. e.g. GoPkgOutline -p json; default package is current file's package
-If guihua not installed fallback to loclist
+Command format: GoPkgOutline {options} options: -f: show in floatwing window (default side panel, both require
+quihua.lua) -p package_name: the package you want to list. e.g. GoPkgOutline -p json; default package is current file's
+package If guihua not installed fallback to loclist
 
 <img width="902" alt="image" src="https://user-images.githubusercontent.com/1681295/175231905-82df4e4b-a508-4bb8-b878-9f0029643005.png">
 
@@ -396,22 +400,23 @@ Modify struct tags by [`gomodifytags`](https://github.com/fatih/gomodifytags) an
 | GoRmTag    |             |
 | GoClearTag |             |
 
-Options:
--transform/-t: transform the tag
--add-options/-a: add options to the tag
+Options: -transform/-t: transform the tag -add-options/-a: add options to the tag
 
 ## GoFmt
 
-nvim-lsp support goimport by default. The plugin provided a new formatter, goline + gofumpt (stricter version of
-gofmt)
+nvim-lsp support goimports by default. The plugin provided a new formatter, goline + gofumpt (stricter version of gofmt)
 
-| command               | Description              |
-| --------------------- | ------------------------ |
-| GoFmt {opts}          | default: gofumpt         |
-| GoImport              | default: goimport        |
-| GoImport package_path | gopls add_import package |
+| command                | Description              |
+| ---------------------- | ------------------------ |
+| GoFmt {opts}           | default: gofumpt         |
+| GoImports              | default: goimports       |
+| GoImports package_path | gopls add_import package |
 
 {opts} : `-a` format all buffers
+
+## GoImplements
+
+nvim-lsp/gopls support implementation by default. The plugin provides this command for people migrate from vim-go
 
 ## GoImpl
 
@@ -419,14 +424,15 @@ generate method stubs for implementing an interface
 
 Usage:
 
-````
+```
 :GoImpl {receiver} {interface}
+```
 
-Also you can put cursor on struct and run
+Also, you can put the cursor on the struct and run
 
-```vim
+```
 :GoImpl {interface}
-````
+```
 
 e.g:
 
@@ -469,12 +475,13 @@ or simply your cursor on a interface and specify a receiver type
 
 Notes:
 
-1. Without any argument, will check if launch.json existed or not, if existed, using launch.json and popup input.
-   If launch.json not existed, will start debug session for current file, if current file is package main will run
-   main(), else will start debug package test
-2. with -t option, if current file is not test file, will switch to test file and run test for current function
-3. If cursor inside scope of a test function, will debug current test function, if cursor inside a test file, will debug
-   current test file
+1. Without any argument, will check if launch.json existed or not, if existed, using launch.json and popup input. If
+   launch.json not existed, will start debug session for current file, if current file is package main will run main(),
+   else will start the debug package test
+2. with -t option, if the current file is not a test file, will switch to the test file and run test for current
+   function
+3. If the cursor is inside scope of a test function, will debug the current test function, if cursor is inside a test
+   file, will debug current test file
 
 ## Switch between go and test file
 
@@ -486,15 +493,12 @@ Notes:
 
 ## Go Mock
 
-go mock with mockgen is supported
-| command | Description |
-| ---------------- | ------------------------------------------------------- |
-| GoMockGen | default: generate mocks for current file |
-options:
--s source mode(default)
--i interface mode, provide interface name or put cursor on interface
--p package name default: mocks
--d destination directory, default: ./mocks
+| command      | Description                                                                      |
+| ------------ | -------------------------------------------------------------------------------- |
+| GoMockGen    | default: generate mocks for current file                                         |
+| GoMockGen -s | source mode(default)                                                             |
+| GoMockGen -i | interface mode, provide interface name or put the cursor on interface -p package |
+| GoMockGen -d | destination directory, default: ./mocks                                          |
 
 ## Comments and Doc
 
@@ -507,7 +511,7 @@ type GoLintComplaining struct{}
 And run
 
 ```lua
- lua.require('go.comment').gen() -- or your faviourite key binding and setup placeholder "no more complaint ;P"
+lua.require('go.comment').gen() -- or your favorite key binding and setup placeholder "no more complaint ;P"
 ```
 
 The code will be:
@@ -521,22 +525,25 @@ type GoLintComplaining struct{}
 | ------- | ----------- |
 | GoCmt   | Add comment |
 
-## GoModTidy
+## GoMod Commands
 
 | command     | Description                           |
 | ----------- | ------------------------------------- |
 | GoModInit   | run `go mod init` and restart gopls   |
 | GoModTidy   | run `go mod tidy` and restart gopls   |
 | GoModVendor | run `go mod vendor` and restart gopls |
+| GoModWhy    | run `go mod why`  for current module  |
+| GoModDnld   | run `go mod download`  for current module |
+| GoModGraph  | run `go mod graph`                    |
 
 run `go mod tidy` and restart gopls
 
 ## LSP
 
 Nvim-lsp is good enough for a gopher. If you looking for a better GUI. You can install
-[navigator](https://github.com/ray-x/navigator.lua), or lspsaga, and lsp-utils etc.
-The goal of go.nvim is more provide unique functions releated to gopls instead of a general lsp gui client.
-The lsp config in go.nvim has a none default setup and contains some improvement and I would suggest you to use.
+[navigator](https://github.com/ray-x/navigator.lua), or lspsaga, and lsp-utils etc. The goal of go.nvim is more provide
+unique functions releated to gopls instead of a general lsp gui client. The lsp config in go.nvim has a none default
+setup and contains some improvement and I would suggest you to use.
 
 ## LSP cmp support
 
@@ -552,18 +559,17 @@ require('go').setup({
     -- other setups
   },
 })
-
 ```
 
 ## LSP CodeLens
 
-Gopls supports code lens. To run gopls code lens action `GoCodeLenAct`
-Note: codelens need to be enabled in gopls, check default config in
+Gopls supports code lens. To run gopls code lens action `GoCodeLenAct` Note: codelens need to be enabled in gopls, check
+default config in
 
 ## LSP CodeActions
 
-You can use native code action provided by lspconfig. If you installed guihua, you can also use a GUI version of
-code action `GoCodeAction`
+You can use native code action provided by lspconfig. If you installed guihua, you can also use a GUI version of code
+action `GoCodeAction`, or with visual selection `:'<,'>GoCodeAction`
 
 ## Lint
 
@@ -572,11 +578,10 @@ configure it with ALE
 
 ## Debug with dlv
 
-Setup(adapter) for go included. Need Dap and Dap UI plugin
-[nvim-dap](https://github.com/mfussenegger/nvim-dap)
+Setup(adapter) for go included. Need Dap and Dap UI plugin [nvim-dap](https://github.com/mfussenegger/nvim-dap)
 [nvim-dap-ui](https://github.com/rcarriga/nvim-dap-ui)
-![dap](https://user-images.githubusercontent.com/1681295/125160289-743ba080-e1bf-11eb-804f-6a6d227ec33b.jpg)
-GDB style key mapping is used
+![dap](https://user-images.githubusercontent.com/1681295/125160289-743ba080-e1bf-11eb-804f-6a6d227ec33b.jpg) GDB style
+key mapping is used
 
 ### Keymaps
 
@@ -597,9 +602,8 @@ GDB style key mapping is used
 ### Moving from vscode-go debug
 
 Please check [Vscode Launch configurations](https://code.visualstudio.com/docs/editor/debugging#_launch-configurations)
-for more info
-go.nvim support launch debuger from vscode-go .vscode/launch.json configurations
-If launch.json is valid, run `GoDebug` will launch from the launch.json configuration.
+for more info go.nvim support launch debugger from vscode-go .vscode/launch.json configurations If launch.json is valid,
+run `GoDebug` will launch from the launch.json configuration.
 
 ### Inlay hints
 
@@ -620,22 +624,31 @@ Here is a sample [launch.json](https://github.com/ray-x/go.nvim/blob/master/play
 
 ### Json to Go struct
 
-- ["x]GoJson2Struct!
-  Visual select the json and run `GoJson2Struct youStructName`
-  -bang will put result to register `a`
+- ["x]GoJson2Struct! Visual select the json and run `GoJson2Struct youStructName` -bang will put result to register `a`
   if ["x] specified, will put get json from clipboard
 
 ### Load Env file
 
-- GoEnv {filename}
-  By default load .env file in current directory, if you want to load other file, use {filename} option
+- GoEnv {filename} By default load .env file in current directory, if you want to load other file, use {filename} option
+- Alternatively, you can specify an `dap_enrich_config` function, to modify the selected launch.json configuration on the fly,
+  as suggested by https://github.com/mfussenegger/nvim-dap/discussions/548#discussioncomment-8778225:
+  ```lua
+    dap_enrich_config = function(config, on_config)
+        local final_config = vim.deepcopy(finalConfig)
+        final_config.env['NEW_ENV_VAR'] = 'env-var-value'
+        -- load .env file for your project
+        local workspacefolder = vim.lsp.buf.list_workspace_folders()[1] or vim.fn.getcwd()
+        local envs_from_file = require('go.env').load_env(workspacefolder .. 'your_project_dot_env_file_name')
+        final_config = vim.tbl_extend("force", final_config, envs_from_file)
+        on_config(final_config)
+    end
+  ```
 
 ### Generate return value
 
 - GoGenReturn
 
-create return value for current function
-e.g. if we have
+create return value for current function e.g. if we have
 
 ```go
 func Foo() (int, error) {
@@ -660,27 +673,23 @@ if err != nil {
 
 ### Rename modules
 
-- Gomvp
-  Rename module name in under cursor
-  e.g.
-  Gomvp
-  Gomvp old_mod_name
-  Gomvp old_mod_name new_mod_name
+- Gomvp Rename module name in under cursor e.g. Gomvp Gomvp old_mod_name Gomvp old_mod_name new_mod_name
 
 ### govulncheck
 
-- GoVulnCheck {arguments}
-  Run govulncheck on current project
+- GoVulnCheck {arguments} Run govulncheck on current project
 
 ### goenum
 
-- Goenum {arguments}
-  Run goenum on current project
+- Goenum {arguments} Run goenum on current project
 
 ### gonew
 
-- GoNew {filename}
-  Create new go file. It will use template file. e.g. `GoNew ./pkg/string.go` will create string.go with template file
+- GoNew {filename} Create new go file. It will use template file. e.g. `GoNew ./pkg/string.go` will create string.go
+  with template file GoNew also support using `gonew` command to create new file with template file
+  [gonew cli](https://go.dev/blog/gonew), e.g `GoNew hello package_name/folder` is same as
+  `gonew golang.org/x/example/hello package_name/folder` if package_name/folder not provided, a hello project will be
+  created in current folder
 
 ### ginkgo
 
@@ -717,6 +726,7 @@ The plugin will setup debugger. But you need to install
 - dap ui (optional)
 
   - 'rcarriga/nvim-dap-ui'
+  - 'nvim-neotest/nvim-nio'
 
 - dap virtual text (optional)
   - 'theHamsta/nvim-dap-virtual-text'
@@ -726,16 +736,28 @@ Also you can check telescope dap extension : nvim-telescope/telescope-dap.nvim
 Sample vimrc for DAP
 
 ```viml
- Plug 'mfussenegger/nvim-dap'
- Plug 'rcarriga/nvim-dap-ui'
- Plug 'theHamsta/nvim-dap-virtual-text'
- " Plug 'nvim-telescope/telescope-dap.nvim'
-
+Plug 'mfussenegger/nvim-dap'
+Plug 'rcarriga/nvim-dap-ui'
+Plug 'nvim-neotest/nvim-nio'
+Plug 'theHamsta/nvim-dap-virtual-text'
+" Plug 'nvim-telescope/telescope-dap.nvim'
 ```
 
 ## Commands
 
 Check [commands.lua](https://github.com/ray-x/go.nvim/blob/master/lua/go/commands.lua) on all the commands provided
+
+## Gopls commands
+
+Check [gopls.lua](https://github.com/ray-x/go.nvim/blob/master/lua/go/gopls.lua) on all the gopls commands provided,
+some of them are not exposed to user, but you can still use it in your lua setup.
+
+- list_imports
+- add_import
+- list_packages
+- tidy
+- change_signature
+- ...
 
 ## configuration
 
@@ -744,45 +766,67 @@ Configure from lua suggested, The default setup:
 ```lua
 require('go').setup({
 
-  disable_defaults = false, -- true|false when true set false to all boolean settings and replace all table
-  -- settings with {}
-  go='go', -- go command, can be go[default] or go1.18beta1
-  goimport='gopls', -- goimport command, can be gopls[default] or goimport
-  fillstruct = 'gopls', -- can be nil (use fillstruct, slower) and gopls
-  gofmt = 'gofumpt', --gofmt cmd,
-  max_line_len = 128, -- max line length in golines format, Target maximum line length for golines
+  disable_defaults = false, -- true|false when true set false to all boolean settings and replace all tables
+  -- settings with {}; string will be set to ''. user need to setup ALL the settings
+  -- It is import to set ALL values in your own config if set value to true otherwise the plugin may not work
+  go='go', -- go command, can be go[default] or e.g. go1.18beta1
+  goimports ='gopls', -- goimports command, can be gopls[default] or either goimports or golines if need to split long lines
+  gofmt = 'gopls', -- gofmt through gopls: alternative is gofumpt, goimports, golines, gofmt, etc
+  fillstruct = 'gopls',  -- set to fillstruct if gopls fails to fill struct
+  max_line_len = 0, -- max line length in golines format, Target maximum line length for golines
   tag_transform = false, -- can be transform option("snakecase", "camelcase", etc) check gomodifytags for details and more options
   tag_options = 'json=omitempty', -- sets options sent to gomodifytags, i.e., json=omitempty
   gotests_template = "", -- sets gotests -template parameter (check gotests for details)
   gotests_template_dir = "", -- sets gotests -template_dir parameter (check gotests for details)
+  gotest_case_exact_match = true, -- true: run test with ^Testname$, false: run test with TestName
   comment_placeholder = '' ,  -- comment_placeholder your cool placeholder e.g. 󰟓       
   icons = {breakpoint = '🧘', currentpos = '🏃'},  -- setup to `false` to disable icons setup
   verbose = false,  -- output loginf in messages
+  lsp_semantic_highlights = true, -- use highlights from gopls
   lsp_cfg = false, -- true: use non-default gopls setup specified in go/lsp.lua
                    -- false: do nothing
                    -- if lsp_cfg is a table, merge table with with non-default gopls setup in go/lsp.lua, e.g.
-                   --   lsp_cfg = {settings={gopls={matcher='CaseInsensitive', ['local'] = 'your_local_module_path', gofumpt = true }}}
-  lsp_gofumpt = false, -- true: set default gofmt in gopls format to gofumpt
+                   -- lsp_cfg = {settings={gopls={matcher='CaseInsensitive', ['local'] = 'your_local_module_path', gofumpt = true }}}
+  lsp_gofumpt = true, -- true: set default gofmt in gopls format to gofumpt
+                      -- false: do not set default gofmt in gopls format to gofumpt
   lsp_on_attach = nil, -- nil: use on_attach function defined in go/lsp.lua,
                        --      when lsp_cfg is true
                        -- if lsp_on_attach is a function: use this function as on_attach function for gopls
-  lsp_keymaps = true, -- set to false to disable gopls/lsp keymap
-  lsp_codelens = true, -- set to false to disable codelens, true by default, you can use a function
-  -- function(bufnr)
-  --    vim.api.nvim_buf_set_keymap(bufnr, "n", "<space>F", "<cmd>lua vim.lsp.buf.formatting()<CR>", {noremap=true, silent=true})
-  -- end
-  -- to setup a table of codelens
-  lsp_diag_hdlr = true, -- hook lsp diag handler
-  lsp_diag_underline = true,
-  -- virtual text setup
-  lsp_diag_virtual_text = { space = 0, prefix = '■' },
-  lsp_diag_signs = true,
-  lsp_diag_update_in_insert = false,
+  lsp_keymaps = true,  -- set to false to disable gopls/lsp keymap
+  lsp_codelens = true,  -- set to false to disable codelens, true by default, you can use a function
+                        -- function(bufnr)
+                        --    vim.api.nvim_buf_set_keymap(bufnr, "n", "<space>F", "<cmd>lua vim.lsp.buf.formatting()<CR>", {noremap=true, silent=true})
+                        -- end
+                        -- to setup a table of codelens
+  null_ls = {           -- set to false to disable null-ls setup
+    golangci_lint = {
+      method = {"NULL_LS_DIAGNOSTICS_ON_SAVE", "NULL_LS_DIAGNOSTICS_ON_OPEN"}, -- when it should run
+      -- disable = {'errcheck', 'staticcheck'}, -- linters to disable empty by default
+      -- enable = {'govet', 'ineffassign','revive', 'gosimple'}, -- linters to enable; empty by default
+      severity = vim.diagnostic.severity.INFO, -- severity level of the diagnostics
+    },
+  },
+  diagnostic = {  -- set diagnostic to false to disable vim.diagnostic.config setup,
+                  -- true: default nvim setup
+    hdlr = false, -- hook lsp diag handler and send diag to quickfix
+    underline = true,
+    virtual_text = { spacing = 2, prefix = '' }, -- virtual text setup
+    signs = {'', '', '', ''},  -- set to true to use default signs, an array of 4 to specify custom signs
+    update_in_insert = false,
+  },
+  -- if you need to setup your ui for input and select, you can do it here
+  -- go_input = require('guihua.input').input -- set to vim.ui.input to disable guihua input
+  -- go_select = require('guihua.select').select -- vim.ui.select to disable guihua select
   lsp_document_formatting = true,
   -- set to true: use gopls to format
   -- false if you want to use other formatter tool(e.g. efm, nulls)
- lsp_inlay_hints = {
-    enable = true,
+  lsp_inlay_hints = {
+    enable = true, -- this is the only field apply to neovim > 0.10
+
+   -- following are used for neovim < 0.10 which does not implement inlay hints
+   -- hint style, set to 'eol' for end-of-line hints, 'inlay' for inline hints
+    style = 'inlay',
+    -- Note: following setup only works for style = 'eol', you do not need to set it for 'inlay'
     -- Only show inlay hints for the current line
     only_current_line = false,
     -- Event which triggers a refersh of the inlay hints.
@@ -799,7 +843,7 @@ require('go').setup({
     show_parameter_hints = true,
     -- prefix for all the other hints (type, chaining)
     other_hints_prefix = "=> ",
-    -- whether to align to the lenght of the longest line in the file
+    -- whether to align to the length of the longest line in the file
     max_len_align = false,
     -- padding from the left if max_len_align is true
     max_len_align_padding = 1,
@@ -817,24 +861,28 @@ require('go').setup({
   dap_debug = true, -- set to false to disable dap
   dap_debug_keymap = true, -- true: use keymap for debugger defined in go/dap.lua
                            -- false: do not use keymap in go/dap.lua.  you must define your own.
-                           -- windows: use visual studio keymap
+                           -- Windows: Use Visual Studio keymap
   dap_debug_gui = {}, -- bool|table put your dap-ui setup here set to false to disable
-  dap_debug_vt = { enabled_commands = true, all_frames = true }, -- bool|table put your dap-virtual-text setup here set to false to disable
+  dap_debug_vt = { enabled = true, enabled_commands = true, all_frames = true }, -- bool|table put your dap-virtual-text setup here set to false to disable
 
-  dap_port = 38697, -- can be set to a number, if set to -1 go.nvim will pickup a random port
+  dap_port = 38697, -- can be set to a number, if set to -1 go.nvim will pick up a random port
   dap_timeout = 15, --  see dap option initialize_timeout_sec = 15,
   dap_retries = 20, -- see dap option max_retries
+  dap_enrich_config = nil, -- see dap option enrich_config
   build_tags = "tag1,tag2", -- set default build tags
-  textobjects = true, -- enable default text jobects through treesittter-text-objects
-  test_runner = 'go', -- one of {`go`, `richgo`, `dlv`, `ginkgo`, `gotestsum`}
+  textobjects = true, -- enable default text objects through treesittter-text-objects
+  test_runner = 'go', -- one of {`go`,  `dlv`, `ginkgo`, `gotestsum`}
   verbose_tests = true, -- set to add verbose flag to tests deprecated, see '-v' option
-  run_in_floaterm = false, -- set to true to run in float window. :GoTermClose closes the floatterm
-                           -- float term recommend if you use richgo/ginkgo with terminal color
+  run_in_floaterm = false, -- set to true to run in a float window. :GoTermClose closes the floatterm
+                           -- float term recommend if you use gotestsum ginkgo with terminal color
 
   floaterm = {   -- position
     posititon = 'auto', -- one of {`top`, `bottom`, `left`, `right`, `center`, `auto`}
     width = 0.45, -- width of float window if not auto
     height = 0.98, -- height of float window if not auto
+    title_colors = 'nord', -- default to nord, one of {'nord', 'tokyo', 'dracula', 'rainbow', 'solarized ', 'monokai'}
+                              -- can also set to a list of colors to define colors to choose from
+                              -- e.g {'#D8DEE9', '#5E81AC', '#88C0D0', '#EBCB8B', '#A3BE8C', '#B48EAD'}
   },
   trouble = false, -- true: use trouble to open quickfix
   test_efm = false, -- errorfomat for quickfix, default mix mode, set to true will be efm only
@@ -844,17 +892,15 @@ require('go').setup({
   on_stdout = function(err, data) _, _ = err, data end, -- callback when job started
   on_stderr = function(err, data)  _, _ = err, data  end, -- callback for stderr
   on_exit = function(code, signal, output)  _, _, _ = code, signal, output  end, -- callback for jobexit, output : string
-  iferr_vertical_shift = 4 -- defines where the cursor will end up vertically from the begining of if err statement 
+  iferr_vertical_shift = 4 -- defines where the cursor will end up vertically from the begining of if err statement
 })
 ```
 
-You will need to add keybind yourself:
-e.g
+You will need to add keybind yourself: e.g
 
 ```lua
-  vim.cmd("autocmd FileType go nmap <Leader><Leader>l GoLint")
-  vim.cmd("autocmd FileType go nmap <Leader>gc :lua require('go.comment').gen()")
-
+vim.cmd("autocmd FileType go nmap <Leader><Leader>l GoLint")
+vim.cmd("autocmd FileType go nmap <Leader>gc :lua require('go.comment').gen()")
 ```
 
 ## Project setup
@@ -865,14 +911,11 @@ setup. You can check the [youtube video here](https://www.youtube.com/watch?v=Xr
 
 ```lua
 -- .gonvim/init.lua project config
-vim.g.null_ls_disable = true
 
 return {
   go = "go", -- set to go1.18beta1 if necessary
-  goimport = "gopls", -- if set to 'gopls' will use gopls format, also goimport
-  fillstruct = "gopls",
+  goimports = "gopls", -- if set to 'gopls' will use gopls format, also goimports
   gofmt = "gofumpt", -- if set to gopls will use gopls format
-  max_line_len = 120
   null_ls_document_formatting_disable = true
 }
 ```
@@ -881,8 +924,7 @@ This will override your global `go.nvim` setup
 
 ## Text object
 
-I did not provide textobject support in the plugin. Please use treesitter textobject plugin.
-My treesitter config:
+I did not provide textobject support in the plugin. Please use treesitter textobject plugin. My treesitter config:
 
 ```lua
   require "nvim-treesitter.configs".setup {
@@ -980,24 +1022,151 @@ My treesitter config:
   }
 ```
 
+</details>
+
 ## LuaSnip supports
 
-go.nvim provides a better snippet support for go.
-Please check [snippets for all languages](https://github.com/ray-x/go.nvim/blob/master/lua/snips/all.lua)
-and [snippets for go](https://github.com/ray-x/go.nvim/blob/master/lua/snips/go.lua)
+go.nvim provides a better snippet support for go. Please check
+[snippets for all languages](https://github.com/ray-x/go.nvim/blob/master/lua/snips/all.lua) and
+[snippets for go](https://github.com/ray-x/go.nvim/blob/master/lua/snips/go.lua)
 
-For a video demo, please check this:
-[go.nvim new features work through](https://www.youtube.com/watch?v=tsLnEfYTgcM)
+For a video demo, please check this: [go.nvim new features work through](https://www.youtube.com/watch?v=tsLnEfYTgcM)
 
-If you are not familiar with luasnip, please checkout [LuaSnip Tutorial](https://www.youtube.com/watch?v=ub0REXjhpmk) and [TJ's Introduction to LuaSnip](https://www.youtube.com/watch?v=Dn800rlPIho)
+If you are not familiar with luasnip, please checkout [LuaSnip Tutorial](https://www.youtube.com/watch?v=ub0REXjhpmk)
+and [TJ's Introduction to LuaSnip](https://www.youtube.com/watch?v=Dn800rlPIho)
 
 ## Nvim LSP setup
 
 go.nvim provided a better non-default setup for gopls (includes debounce, staticcheck, diagnosticsDelay etc)
 
-This gopls setup provided by go.nvim works perfectly fine for most of the cases. You can also install [navigator.lua](https://github.com/ray-x/navigator.lua) which can auto setup all lsp clients and provides a better GUI.
+This gopls setup provided by go.nvim works perfectly fine for most of the cases. You can also install
+[navigator.lua](https://github.com/ray-x/navigator.lua) which can auto setup all lsp clients and provides a better GUI.
 
-For diagnostic issue, you can use the default setup. There are also quite a few plugins that you can use to explore issues, e.g. [navigator.lua](https://github.com/ray-x/navigator.lua), [folke/lsp-trouble.nvim](https://github.com/folke/lsp-trouble.nvim). [Nvim-tree](https://github.com/kyazdani42/nvim-tree.lua) and [Bufferline](https://github.com/akinsho/nvim-bufferline.lua) also introduced lsp diagnostic hooks.
+For diagnostic issue, you can use the default setup. There are also quite a few plugins that you can use to explore
+issues, e.g. [navigator.lua](https://github.com/ray-x/navigator.lua),
+[folke/lsp-trouble.nvim](https://github.com/folke/lsp-trouble.nvim).
+[Nvim-tree](https://github.com/kyazdani42/nvim-tree.lua) and
+[Bufferline](https://github.com/akinsho/nvim-bufferline.lua) also introduced lsp diagnostic hooks.
+
+> [!IMPORTANT] I will integrate more gopls functions into go.nvim, please make sure you have the latest version
+> installed Also, enable gopls experimental features if it is configure somewhere other than go.nvim Otherwise, set
+> `lsp_cfg` to `true` in your go.nvim setup to enable gopls setup in go.nvim
+
+<details>
+  <summary>Gopls default settings in go.nvim</summary>
+
+```lua
+gopls = {
+    capabilities = {
+      textDocument = {
+        completion = {
+          completionItem = {
+            commitCharactersSupport = true,
+            deprecatedSupport = true,
+            documentationFormat = { 'markdown', 'plaintext' },
+            preselectSupport = true,
+            insertReplaceSupport = true,
+            labelDetailsSupport = true,
+            snippetSupport = true,
+            resolveSupport = {
+              properties = {
+                'documentation',
+                'details',
+                'additionalTextEdits',
+              },
+            },
+          },
+          contextSupport = true,
+          dynamicRegistration = true,
+        },
+      },
+    },
+    filetypes = { 'go', 'gomod', 'gosum', 'gotmpl', 'gohtmltmpl', 'gotexttmpl' },
+    message_level = vim.lsp.protocol.MessageType.Error,
+    cmd = {
+      'gopls', -- share the gopls instance if there is one already
+      '-remote.debug=:0',
+    },
+    root_dir = function(fname)
+      local has_lsp, lspconfig = pcall(require, 'lspconfig')
+      if has_lsp then
+        local util = lspconfig.util
+        return util.root_pattern('go.work', 'go.mod')(fname)
+          or util.root_pattern('.git')(fname)
+          or util.path.dirname(fname)
+      end
+    end,
+    flags = { allow_incremental_sync = true, debounce_text_changes = 500 },
+    settings = {
+      gopls = {
+        -- more settings: https://github.com/golang/tools/blob/master/gopls/doc/settings.md
+        -- not supported
+        analyses = {
+          unreachable = true,
+          nilness = true,
+          unusedparams = true,
+          useany = true,
+          unusedwrite = true,
+          ST1003 = true,
+          undeclaredname = true,
+          fillreturns = true,
+          nonewvars = true,
+          fieldalignment = false,
+          shadow = true,
+        },
+        codelenses = {
+          generate = true, -- show the `go generate` lens.
+          gc_details = true, -- Show a code lens toggling the display of gc's choices.
+          test = true,
+          tidy = true,
+          vendor = true,
+          regenerate_cgo = true,
+          upgrade_dependency = true,
+        },
+        hints = {
+          assignVariableTypes = true,
+          compositeLiteralFields = true,
+          compositeLiteralTypes = true,
+          constantValues = true,
+          functionTypeParameters = true,
+          parameterNames = true,
+          rangeVariableTypes = true,
+        },
+        usePlaceholders = true,
+        completeUnimported = true,
+        staticcheck = true,
+        matcher = 'Fuzzy',
+        diagnosticsDelay = '500ms',
+        symbolMatcher = 'fuzzy',
+        semanticTokens = true,
+        noSemanticTokens = true, -- disable semantic string tokens so we can use treesitter highlight injection
+
+        ['local'] = get_current_gomod(),
+        gofumpt = _GO_NVIM_CFG.lsp_gofumpt or false, -- true|false, -- turn on for new repos, gofmpt is good but also create code turmoils
+        buildFlags = { '-tags', 'integration' },
+      },
+    },
+    -- NOTE: it is important to add handler to formatting handlers
+    -- the async formatter will call these handlers when gopls responed
+    -- without these handlers, the file will not be saved
+    handlers = {
+      [range_format] = function(...)
+        vim.lsp.handlers[range_format](...)
+        if vfn.getbufinfo('%')[1].changed == 1 then
+          vim.cmd('noautocmd write')
+        end
+      end,
+      [formatting] = function(...)
+        vim.lsp.handlers[formatting](...)
+        if vfn.getbufinfo('%')[1].changed == 1 then
+          vim.cmd('noautocmd write')
+        end
+      end,
+    },
+  }
+```
+
+</details>
 
 ## Integrate with mason-lspconfig
 
@@ -1005,17 +1174,13 @@ For diagnostic issue, you can use the default setup. There are also quite a few 
 require("mason").setup()
 require("mason-lspconfig").setup()
 require('lspconfig').gopls.setup({
-  gopls_cmd = {install_root_dir .. '/go/gopls'},
-  fillstruct = 'gopls',
-  dap_debug = true,
-  dap_debug_gui = true
+   -- your gopls setup
 })
 ```
 
 If you want to use gopls setup provided by go.nvim
 
 ```lua
-
 -- setup your go.nvim
 -- make sure lsp_cfg is disabled
 require("mason").setup()
@@ -1027,8 +1192,22 @@ require('go').setup{
 local cfg = require'go.lsp'.config() -- config() return the go.nvim gopls setup
 
 require('lspconfig').gopls.setup(cfg)
-
 ```
+
+## Highlighting for gomod, gosum, gohtmltmpl, gotmpl
+
+You can install tree-sitter parsers for gomod, gosum and gotmpl
+
+```vim
+:TSInstall gomod gosum gotmpl
+```
+
+The plugin injects the tmpl to html syntax so you should see this:
+
+![image](https://github.com/ray-x/go.nvim/assets/1681295/7d11eb96-4803-418b-b056-336163ed492b)
+
+To get highlighting for other templated languages check out the docs of
+[tree-sitter-go-template](https://github.com/ngalaiko/tree-sitter-go-template).
 
 ## Integrate null-ls
 
@@ -1062,7 +1241,6 @@ null_ls.setup({ sources = sources, debounce = 1000, default_timeout = 5000 })
 
 -- alternatively
 null_ls.register(gotest)
-
 ```
 
 You will see the failed tests flagged
@@ -1090,9 +1268,8 @@ call plug#end()
 
 lua <<EOF
 require 'go'.setup({
-  goimport = 'gopls', -- if set to 'gopls' will use golsp format
+  goimports = 'gopls', -- if set to 'gopls' will use golsp format
   gofmt = 'gopls', -- if set to gopls will use golsp format
-  max_line_len = 120,
   tag_transform = false,
   test_dir = '',
   comment_placeholder = '   ',
